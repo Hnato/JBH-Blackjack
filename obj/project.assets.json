@@ -83,11 +83,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Projekt black jack\\Final\\BlackJackBJH.csproj",
+      "projectUniqueName": "C:\\Users\\AP\\Music\\BJH\\JBH-Blackjack-LAN\\BlackJackBJH.csproj",
       "projectName": "BlackJackBJH",
-      "projectPath": "D:\\Projekt black jack\\Final\\BlackJackBJH.csproj",
+      "projectPath": "C:\\Users\\AP\\Music\\BJH\\JBH-Blackjack-LAN\\BlackJackBJH.csproj",
       "packagesPath": "C:\\Users\\AP\\.nuget\\packages\\",
-      "outputPath": "D:\\Projekt black jack\\Final\\obj\\",
+      "outputPath": "C:\\Users\\AP\\Music\\BJH\\JBH-Blackjack-LAN\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

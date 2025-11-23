@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR();
-builder.WebHost.UseUrls("http://0.0.0.0:5329");
+builder.WebHost.ConfigureKestrel(o=>{ o.ListenAnyIP(5329); });
 
 StartupDiagnostics.Run();
 var app = builder.Build();

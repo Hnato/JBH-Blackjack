@@ -180,7 +180,7 @@ function setControls(){
   if(state.phase!=='PLAY'){ ui.stood=false }
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
-  document.querySelectorAll('.play').forEach(b=>{b.style.display=state.phase==='PLAY'?'inline-block':'none';b.disabled=!canPlay})
+  document.querySelectorAll('.play').forEach(b=>{b.style.display=(state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
 
   const canStart=isAdmin() && state.phase==='BETTING' && state.players.some(p=>(p.bet||0)>0)
   const startBtn=document.getElementById('start')
@@ -188,14 +188,15 @@ function setControls(){
   startBtn.disabled=!canStart
 
   const betsBtn=document.getElementById('bets')
-  betsBtn.style.display= isAdmin() ? 'inline-block' : 'none'
-  betsBtn.disabled=!isAdmin() || ui.stood
-  if(ui.stood){ betsBtn.textContent='Czekaj...' } else { betsBtn.textContent='Nowe zakłady' }
+  const showBets = isAdmin() && (state.phase==='BETTING' || state.phase==='SETTLEMENT')
+  betsBtn.style.display= showBets ? 'inline-block' : 'none'
+  betsBtn.disabled=!isAdmin() || state.phase==='PLAY'
+  betsBtn.textContent='Nowe zakłady'
 
   const resetBtn=document.getElementById('reset')
-  resetBtn.style.display= isAdmin() ? 'inline-block' : 'none'
-  resetBtn.disabled = ui.stood || state.phase==='PLAY'
-  resetBtn.textContent = resetBtn.disabled? 'Czekaj...' : 'Reset strony'
+  resetBtn.style.display= (isAdmin() && state.phase!=='PLAY') ? 'inline-block' : 'none'
+  resetBtn.disabled = false
+  resetBtn.textContent = 'Reset strony'
 
   document.querySelector('.chips-bar').classList.toggle('hidden', state.phase!=='BETTING')
   const chipBtns=[...document.querySelectorAll('.chip')]
@@ -206,7 +207,7 @@ function setControls(){
   })
 
   const joinBox=document.querySelector('.hud .join')
-  joinBox.style.display = me ? 'none' : 'flex'
+  joinBox.style.display = me ? 'none' : (state.phase==='BETTING' ? 'flex' : 'none')
 }
 
 document.querySelectorAll('.chip').forEach(btn=>{
@@ -217,7 +218,7 @@ function clickFX(btn){ if(!btn) return; btn.classList.add('clicked'); setTimeout
 document.getElementById('start').addEventListener('click',(e)=>{clickFX(e.target); hub.invoke('StartGame')})
 document.getElementById('bets').addEventListener('click',(e)=>{clickFX(e.target); hub.invoke('NewBets'); ui.stood=false })
 document.getElementById('hit').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('Hit')})
-document.getElementById('stand').addEventListener('click',(e)=>{clickFX(e.target); ui.stood=true; document.querySelectorAll('.play').forEach(b=>{b.disabled=true; b.style.display='none'}); const reset=document.getElementById('reset'); if(reset){ reset.disabled=true; reset.textContent='Czekaj...' } hub.invoke('Stand'); setControls()})
+document.getElementById('stand').addEventListener('click',(e)=>{clickFX(e.target); ui.stood=true; document.querySelectorAll('.play').forEach(b=>{b.disabled=true; b.style.display='none'}); const reset=document.getElementById('reset'); if(reset){ reset.style.display='none' } hub.invoke('Stand'); setControls()})
 document.getElementById('double').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('DoubleDown')})
 
 async function start(){
@@ -266,16 +267,30 @@ document.getElementById('reset').addEventListener('click',()=>{ window.location.
 function addChips(container, amount){
   const denoms=[500,100,50,25,10]
   let remaining=amount
-  for(const d of denoms){
-    while(remaining>=d){
-      const chip=document.createElement('div')
-      chip.className=`chip-token chip-t-${d}`
-      chip.textContent=String(d)
-      chip.style.position='relative'
-      chip.style.width='28px';chip.style.height='28px'
-      chip.style.borderWidth='3px'
-      container.appendChild(chip)
-      remaining-=d
-    }
+  const stack=[]
+  for(const d of denoms){ while(remaining>=d){ stack.push(d); remaining-=d } }
+  const chipSize=28
+  const maxWidth = parseInt(getComputedStyle(container).width)||90
+  const overlapRatio = 0.75
+  let step = stack.length>1 ? Math.max(2, Math.floor(chipSize*(1-overlapRatio))) : 0
+  if(stack.length>1){
+    const fitStep = Math.floor((maxWidth - chipSize) / (stack.length-1))
+    step = Math.min(step, Math.max(1, fitStep))
   }
+  container.style.position='relative'
+  container.innerHTML=''
+  for(let i=0;i<stack.length;i++){
+    const d=stack[i]
+    const chip=document.createElement('div')
+    chip.className=`chip-token chip-t-${d}`
+    chip.textContent=String(d)
+    chip.style.position='absolute'
+    chip.style.width=chipSize+'px';chip.style.height=chipSize+'px'
+    chip.style.borderWidth='3px'
+    chip.style.left=(i*step)+'px'
+    chip.style.top='0px'
+    chip.style.zIndex=String(100+i)
+    container.appendChild(chip)
+  }
+  container.style.height=chipSize+'px'
 }
