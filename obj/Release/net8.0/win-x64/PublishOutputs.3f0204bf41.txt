@@ -1,0 +1,3 @@
+D:\Projekt black jack\Final\bin\Release\net8.0\win-x64\publish\BlackJackBJH.pdb
+D:\Projekt black jack\Final\bin\Release\net8.0\win-x64\publish\aspnetcorev2_inprocess.dll
+D:\Projekt black jack\Final\bin\Release\net8.0\win-x64\publish\BlackJackBJH.exe

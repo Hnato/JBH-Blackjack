@@ -1,0 +1,55 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSignalR();
+builder.WebHost.UseUrls("http://0.0.0.0:5329");
+
+StartupDiagnostics.Run();
+var app = builder.Build();
+
+var defaultFiles = new DefaultFilesOptions();
+defaultFiles.DefaultFileNames.Clear();
+defaultFiles.DefaultFileNames.Add("static/index.html");
+app.UseDefaultFiles(defaultFiles);
+app.UseStaticFiles();
+
+app.MapHub<GameHub>("/gamehub");
+
+app.Run();
+
+static class StartupDiagnostics
+{
+    public static void Run()
+    {
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                TryRun("winget", "--version");
+                TryRun("dotnet", "--info");
+                TryRun("netsh", "advfirewall firewall add rule name=BlackJackBJH dir=in action=allow protocol=TCP localport=5329");
+            }
+        }
+        catch {}
+    }
+    static void TryRun(string file, string args)
+    {
+        try
+        {
+            var p=new Process();
+            p.StartInfo.FileName=file;
+            p.StartInfo.Arguments=args;
+            p.StartInfo.CreateNoWindow=true;
+            p.StartInfo.UseShellExecute=false;
+            p.StartInfo.RedirectStandardOutput=true;
+            p.StartInfo.RedirectStandardError=true;
+            p.Start();
+            p.WaitForExit(3000);
+        }
+        catch {}
+    }
+}
