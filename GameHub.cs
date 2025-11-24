@@ -128,6 +128,16 @@ public class GameHub : Hub
         await Clients.All.SendAsync("State", State.ToDto());
     }
 
+    public async Task Split()
+    {
+        lock (_lock)
+        {
+            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+            State.Split(seat);
+        }
+        await Clients.All.SendAsync("State", State.ToDto());
+    }
+
     private bool IsHost(HubCallerContext ctx)
     {
         var http = ctx.GetHttpContext();
@@ -149,11 +159,17 @@ public class GameHub : Hub
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public List<Card> Hand { get; set; } = new List<Card>();
+        public List<Card>? Hand1 { get; set; }
+        public List<Card>? Hand2 { get; set; }
         public bool Stood { get; set; }
         public bool Finished { get; set; }
         public int Seat { get; set; }
         public int Money { get; set; }
         public int Bet { get; set; }
+        public int Bet1 { get; set; }
+        public int Bet2 { get; set; }
+        public bool Finished1 { get; set; }
+        public bool Finished2 { get; set; }
     }
 
     private class GameState
@@ -223,7 +239,7 @@ public class GameHub : Hub
         public void StartGame()
         {
             Dealer.Clear();
-            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; }
+            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false; p.Bet1=p.Bet; p.Bet2=0; }
             Finished=false; Phase="PLAY";
             Deck = BuildDeck();
             Shuffle(Deck);
@@ -236,7 +252,10 @@ public class GameHub : Hub
             {
                 if (IsBlackjack(p.Hand)) { p.Stood=true; p.Finished=true; }
             }
-            var next = Players.Where(x=>!x.Finished).OrderBy(x=>x.Seat).FirstOrDefault();
+            var next = Players
+                .Where(x=> (x.Hand2!=null ? !(x.Finished1 && x.Finished2) : !x.Finished))
+                .OrderBy(x=>x.Seat)
+                .FirstOrDefault();
             if (next!=null) ActiveSeat = next.Seat; else { DealerPlay(); Finished=true; Phase="SETTLEMENT"; Settle(); }
         }
 
@@ -246,19 +265,28 @@ public class GameHub : Hub
             if (p==null || p.Finished) return;
             p.Hand.Add(Deal()); DeckCount = Deck.Count;
             var sc = Score(p.Hand);
-            if (sc>21){ p.Finished=true; p.Stood=true; AdvanceActive(); }
+            if (sc>21){
+                if (p.Hand2!=null && !p.Finished2 && p.Hand==p.Hand1){ p.Finished1=true; p.Hand=p.Hand2; p.Stood=false; p.Finished=false; return; }
+                if (p.Hand2!=null && !p.Finished1 && p.Hand==p.Hand2){ p.Finished2=true; p.Stood=true; p.Finished=true; AdvanceActive(); return; }
+                p.Finished=true; p.Stood=true; AdvanceActive();
+            }
         }
 
         public void Stand(int seat)
         {
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
             if (p==null || p.Finished) return;
+            if (p.Hand2!=null && p.Hand==p.Hand1 && !p.Finished2){ p.Finished1=true; p.Hand=p.Hand2; p.Stood=false; p.Finished=false; return; }
+            if (p.Hand2!=null && p.Hand==p.Hand2){ p.Finished2=true; }
             p.Stood=true; p.Finished=true; AdvanceActive();
         }
 
         private void AdvanceActive()
         {
-            var next = Players.Where(x=>!x.Finished).OrderBy(x=>x.Seat).FirstOrDefault();
+            var next = Players
+                .Where(x=> x.Hand2!=null ? !(x.Finished1 && x.Finished2) : !x.Finished)
+                .OrderBy(x=>x.Seat)
+                .FirstOrDefault();
             if (next!=null){ ActiveSeat=next.Seat; return; }
             DealerPlay(); Finished=true; Phase="SETTLEMENT"; Settle();
         }
@@ -313,7 +341,26 @@ public class GameHub : Hub
                 hostId = HostId,
                 adminId = AdminId,
                 dealer = Dealer,
-                players = Players.Select(p=> new { id=p.Id, name=p.Name, seat=p.Seat, hand=p.Hand, stood=p.Stood, finished=p.Finished, money=p.Money, bet=p.Bet, score=Score(p.Hand) }),
+                players = Players.Select(p=> new {
+                    id=p.Id,
+                    name=p.Name,
+                    seat=p.Seat,
+                    hand=p.Hand,
+                    hand1=p.Hand1,
+                    hand2=p.Hand2,
+                    bet=p.Bet,
+                    bet1=p.Bet1,
+                    bet2=p.Bet2,
+                    stood=p.Stood,
+                    finished=p.Finished,
+                    finished1=p.Finished1,
+                    finished2=p.Finished2,
+                    activeHand = (p.Hand2!=null && p.Hand==p.Hand2) ? 2 : 1,
+                    money=p.Money,
+                    score=Score(p.Hand),
+                    score1=p.Hand1!=null ? Score(p.Hand1) : (int?)null,
+                    score2=p.Hand2!=null ? Score(p.Hand2) : (int?)null
+                }),
                 activeSeat = ActiveSeat,
                 finished = Finished,
                 phase = Phase,
@@ -349,15 +396,60 @@ public class GameHub : Hub
             if (p==null || p.Finished) return;
             if (ActiveSeat != seat) return;
             if (p.Hand.Count != 2) return;
-            if (p.Bet <= 0) return;
-            var extraCap = Math.Max(0, 2000 - p.Bet);
-            var extra = Math.Min(p.Bet, Math.Min(extraCap, p.Money));
+            var currentBet = (p.Hand2!=null && p.Hand==p.Hand2) ? p.Bet2 : (p.Hand1!=null ? p.Bet1 : p.Bet);
+            if (currentBet <= 0) return;
+            var extraCap = Math.Max(0, 2000 - (p.Bet1+p.Bet2));
+            var extra = Math.Min(currentBet, Math.Min(extraCap, p.Money));
             if (extra<=0) return;
-            p.Bet += extra;
+            if (p.Hand2!=null && p.Hand==p.Hand2){ p.Bet2 += extra; } else { if(p.Hand1!=null) p.Bet1 += extra; else p.Bet += extra; }
             p.Money -= extra;
             p.Hand.Add(Deal()); DeckCount = Deck.Count;
-            p.Stood = true; p.Finished = true;
-            AdvanceActive();
+            if (p.Hand2!=null)
+            {
+                if (p.Hand==p.Hand1)
+                {
+                    p.Finished1 = true;
+                    p.Hand = p.Hand2;
+                    p.Stood = false;
+                    p.Finished = false;
+                }
+                else
+                {
+                    p.Finished2 = true;
+                    p.Stood = true;
+                    p.Finished = true;
+                    AdvanceActive();
+                }
+            }
+            else
+            {
+                p.Stood = true; p.Finished = true; AdvanceActive();
+            }
+            p.Bet = p.Bet1 + p.Bet2;
+        }
+
+        public void Split(int seat)
+        {
+            if (Phase != "PLAY") return;
+            var p = Players.FirstOrDefault(x=>x.Seat==seat);
+            if (p==null || p.Finished) return;
+            if (ActiveSeat != seat) return;
+            if (p.Hand.Count != 2) return;
+            bool canPair = p.Hand[0].r==p.Hand[1].r || (ValueOf(p.Hand[0])==10 && ValueOf(p.Hand[1])==10);
+            if (!canPair) return;
+            var baseBet = (p.Bet1>0)?p.Bet1:p.Bet;
+            var extraCap = Math.Max(0, 2000 - (p.Bet1+p.Bet2));
+            var extra = Math.Min(baseBet, Math.Min(extraCap, p.Money));
+            if (extra<=0) return;
+            p.Money -= extra;
+            p.Bet2 += extra;
+            p.Hand1 = new List<Card>{ p.Hand[0] };
+            p.Hand2 = new List<Card>{ p.Hand[1] };
+            p.Hand = p.Hand1;
+            p.Hand1.Add(Deal()); DeckCount = Deck.Count;
+            p.Hand2.Add(Deal()); DeckCount = Deck.Count;
+            p.Finished=false; p.Stood=false; p.Finished1=false; p.Finished2=false;
+            p.Bet = p.Bet1 + p.Bet2;
         }
 
         private void Settle()
@@ -367,41 +459,28 @@ public class GameHub : Hub
             foreach(var p in Players)
             {
                 int payout = 0;
-                var sc = Score(p.Hand);
-                var playerBJ = IsBlackjack(p.Hand);
-                if (sc>21)
-                {
-                    payout = 0;
-                }
-                else if (dealerSc>21)
-                {
-                    payout = p.Bet * 2;
-                }
-                else if (playerBJ && !dealerBJ)
-                {
-                    payout = (int)Math.Floor(p.Bet * 2.5);
-                }
-                else if (dealerBJ && !playerBJ)
-                {
-                    payout = 0;
-                }
-                else if (sc>dealerSc)
-                {
-                    payout = p.Bet * 2;
-                }
-                else if (sc<dealerSc)
-                {
-                    payout = 0;
-                }
-                else
-                {
-                    payout = p.Bet; // push
-                }
-                var newMoney = p.Money + payout;
+                int payout2 = 0;
+                Func<List<Card>,int,int> pay = (hand,bet)=>{
+                    if (bet<=0) return 0;
+                    var sc = Score(hand);
+                    var playerBJ = IsBlackjack(hand);
+                    if (sc>21) return 0;
+                    if (dealerSc>21) return bet*2;
+                    if (playerBJ && !dealerBJ) return (int)Math.Floor(bet*2.5);
+                    if (dealerBJ && !playerBJ) return 0;
+                    if (sc>dealerSc) return bet*2;
+                    if (sc<dealerSc) return 0;
+                    return bet; // push
+                };
+                if (p.Hand1!=null) payout = pay(p.Hand1, p.Bet1);
+                else payout = pay(p.Hand, p.Bet1>0? p.Bet1 : p.Bet);
+                if (p.Hand2!=null) payout2 = pay(p.Hand2, p.Bet2);
+                var newMoney = p.Money + payout + payout2;
                 if (newMoney < 0) newMoney = 0;
                 if (newMoney > 1_000_000) newMoney = 1_000_000;
                 p.Money = newMoney;
-                p.Bet = 0;
+                p.Bet = 0; p.Bet1=0; p.Bet2=0;
+                p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false;
             }
         }
     }

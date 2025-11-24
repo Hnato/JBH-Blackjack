@@ -66,7 +66,7 @@ function render(){
   const present = state.players.slice().sort((a,b)=>a.seat-b.seat)
   const n = present.length
   const isMobile = window.innerWidth<=640
-  const seatWidth = isMobile ? 120 : 160
+  const seatWidth = isMobile ? 140 : 240
   const gap = isMobile ? 16 : 24
   const ovalRect=document.querySelector('.oval').getBoundingClientRect()
   const tableRect=rect
@@ -87,14 +87,40 @@ function render(){
     const name=document.createElement('div');name.className='name'
     const nm=document.createElement('span');nm.textContent=(p.name||'').slice(0,10)
     name.appendChild(nm)
-    const meta=document.createElement('div');meta.className='meta';meta.innerHTML=`<span>Miejsce ${p.seat+1}</span><span>Wartość: ${p.score!=null?p.score:score(p.hand)}</span>`
-    const cards=document.createElement('div');cards.className='cards'
-    const prevP = prevState ? prevState.players.find(pp=>pp.seat===p.seat) : null
-    const prevLen = prevP ? (prevP.hand ? prevP.hand.length : 0) : 0
-    p.hand.forEach((c,i)=> {
-      const animate = !prevState || i>=prevLen
-      cards.appendChild(cardEl(c,true,i,animate))
-    })
+    const meta=document.createElement('div');meta.className='meta'
+    if(p.hand1 || p.hand2){
+      const s1 = p.score1!=null ? p.score1 : (p.hand1 ? score(p.hand1) : null)
+      const s2 = p.score2!=null ? p.score2 : (p.hand2 ? score(p.hand2) : null)
+      const a = p.activeHand===2 ? '•' : ''
+      const b = p.activeHand===2 ? '' : '•'
+      meta.innerHTML=`<span>Miejsce ${p.seat+1}</span><span>Wartość: ${s1!=null?s1:'?'}${b} | ${s2!=null?s2:'?'}${a}</span>`
+    } else {
+      meta.innerHTML=`<span>Miejsce ${p.seat+1}</span><span>Wartość: ${p.score!=null?p.score:score(p.hand)}</span>`
+    }
+    const cards=document.createElement('div');
+    if(p.hand1 || p.hand2){
+      cards.className='cards split'
+      const h1=document.createElement('div'); h1.className='hand hand1'
+      const h2=document.createElement('div'); h2.className='hand hand2'
+      const b1=document.createElement('div'); b1.className='hand-bet'; b1.textContent = `Stawka: ${p.bet1||0}`
+      const b2=document.createElement('div'); b2.className='hand-bet'; b2.textContent = `Stawka: ${p.bet2||0}`
+      const prevP = prevState ? prevState.players.find(pp=>pp.seat===p.seat) : null
+      const prevLen1 = prevP && prevP.hand1 ? prevP.hand1.length : 0
+      const prevLen2 = prevP && prevP.hand2 ? prevP.hand2.length : 0
+      ;(p.hand1||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen1; h1.appendChild(cardEl(c,true,i,animate)) })
+      ;(p.hand2||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen2; h2.appendChild(cardEl(c,true,i,animate)) })
+      if(p.activeHand===1) h1.classList.add('active'); else if(p.activeHand===2) h2.classList.add('active')
+      h1.appendChild(b1); h2.appendChild(b2)
+      cards.appendChild(h1); cards.appendChild(h2)
+    } else {
+      cards.className='cards'
+      const prevP = prevState ? prevState.players.find(pp=>pp.seat===p.seat) : null
+      const prevLen = prevP ? (prevP.hand ? prevP.hand.length : 0) : 0
+      p.hand.forEach((c,i)=> {
+        const animate = !prevState || i>=prevLen
+        cards.appendChild(cardEl(c,true,i,animate))
+      })
+    }
     const chips=document.createElement('div');chips.className='chips-row'
     addChips(chips, p.bet||0)
     name.appendChild(chips)
@@ -181,6 +207,26 @@ function setControls(){
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
   document.querySelectorAll('.play').forEach(b=>{b.style.display=(state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
+  const splitBtn=document.getElementById('split')
+  if(splitBtn){
+    const hasSplit = !!me && (me.hand1 || me.hand2)
+    const meHand=me?me.hand:[]
+    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K')))
+    splitBtn.style.display = (state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
+    splitBtn.disabled = !canSplit
+  }
+  const doubleBtn=document.getElementById('double')
+  if(doubleBtn){
+    let canDouble=false
+    if(me && (me.hand1 || me.hand2)){
+      const activeHand = me.activeHand===2 ? me.hand2 : me.hand1
+      canDouble = !!activeHand && activeHand.length===2
+    } else {
+      canDouble = !!me && me.hand && me.hand.length===2
+    }
+    doubleBtn.style.display = (state.phase==='PLAY' && !ui.stood && canDouble) ? 'inline-block' : 'none'
+    doubleBtn.disabled = !canPlay || !canDouble
+  }
 
   const canStart=isAdmin() && state.phase==='BETTING' && state.players.some(p=>(p.bet||0)>0)
   const startBtn=document.getElementById('start')
@@ -220,6 +266,7 @@ document.getElementById('bets').addEventListener('click',(e)=>{clickFX(e.target)
 document.getElementById('hit').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('Hit')})
 document.getElementById('stand').addEventListener('click',(e)=>{clickFX(e.target); ui.stood=true; document.querySelectorAll('.play').forEach(b=>{b.disabled=true; b.style.display='none'}); const reset=document.getElementById('reset'); if(reset){ reset.style.display='none' } hub.invoke('Stand'); setControls()})
 document.getElementById('double').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('DoubleDown')})
+document.getElementById('split').addEventListener('click',(e)=>{clickFX(e.target); hub.invoke('Split')})
 
 async function start(){
   hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()
@@ -265,13 +312,13 @@ document.getElementById('result-close').addEventListener('click',()=>{
 
 document.getElementById('reset').addEventListener('click',()=>{ window.location.reload() })
 function addChips(container, amount){
-  const denoms=[500,100,50,25,10]
+  const denoms=[500,100,25,10,5,1]
   let remaining=amount
   const stack=[]
   for(const d of denoms){ while(remaining>=d){ stack.push(d); remaining-=d } }
-  const chipSize=28
+  const chipSize=26
   const maxWidth = parseInt(getComputedStyle(container).width)||90
-  const overlapRatio = 0.75
+  const overlapRatio = 0.95
   let step = stack.length>1 ? Math.max(2, Math.floor(chipSize*(1-overlapRatio))) : 0
   if(stack.length>1){
     const fitStep = Math.floor((maxWidth - chipSize) / (stack.length-1))
