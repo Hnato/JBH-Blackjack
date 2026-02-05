@@ -39,7 +39,6 @@ function spreadArc(start,end,n){ const step=(end-start)/(n-1); return Array.from
 function render(){
   const connected = hub && hub.state===signalR.HubConnectionState.Connected
   document.getElementById('phase').textContent= connected ? (state.phase||'BETTING') : 'OFFLINE'
-  document.getElementById('deck').textContent= '∞'
   if(state.phase==='SETTLEMENT'){ ui.stood=false }
 
   const seatsEl=document.getElementById('seats');seatsEl.innerHTML=''
@@ -91,8 +90,8 @@ function render(){
     if(p.hand1 || p.hand2){
       const s1 = p.score1!=null ? p.score1 : (p.hand1 ? score(p.hand1) : null)
       const s2 = p.score2!=null ? p.score2 : (p.hand2 ? score(p.hand2) : null)
-      const a = p.activeHand===2 ? '•' : ''
-      const b = p.activeHand===2 ? '' : '•'
+      const a = p.activeHand===2 ? '' : ''
+      const b = p.activeHand===2 ? '' : ''
       meta.innerHTML=`<span>Miejsce ${p.seat+1}</span><span>Wartość: ${s1!=null?s1:'?'}${b} | ${s2!=null?s2:'?'}${a}</span>`
     } else {
       meta.innerHTML=`<span>Miejsce ${p.seat+1}</span><span>Wartość: ${p.score!=null?p.score:score(p.hand)}</span>`
@@ -148,30 +147,78 @@ function renderBurst(){
   banner.style.display=bust?'block':'none'
 }
 
+let cachedResult = null
+
 function renderResult(){
   const modal=document.getElementById('result')
   const title=document.getElementById('result-title')
   const sub=document.getElementById('result-sub')
   const meId=hub && hub.connectionId
   const me=state.players.find(p=>p.id===meId)
-  if(state.phase!=='SETTLEMENT' || !me){ modal.classList.add('hidden'); return }
-  const dealerSc=score(state.dealer)
+  
+  if(state.phase!=='SETTLEMENT'){ 
+      cachedResult = null
+      modal.classList.add('hidden')
+      return 
+  }
+  if(!me) return
+
+  let betBefore = me.lastBet || 0
+  let delta = me.lastWin || 0
+  let reason = me.winReason || ''
+  let fromCache = false
+
+  if(betBefore === 0){
+      if(cachedResult){
+          betBefore = cachedResult.bet
+          delta = cachedResult.delta
+          reason = cachedResult.reason
+          fromCache = true
+      } else {
+          const prevMe = prevState ? prevState.players.find(p=>p.id===meId) : null
+          if(prevMe && (prevMe.bet||0)>0){
+              betBefore = prevMe.bet
+              delta = me.money - prevMe.money
+              cachedResult = { bet: betBefore, delta: delta, reason: '' }
+          }
+      }
+  }
+
+  const dealerSc=state.dealerScore!=null ? state.dealerScore : score(state.dealer)
   const mySc=me.score!=null?me.score:score(me.hand)
-  const betBefore = me.lastBet || 0
-  const delta = me.lastWin || 0
   const pct = betBefore>0 ? Math.round((delta/betBefore)*100) : 0
+  
   let outcome, detail
-  if(me.winReason) {
+  if(reason) {
       outcome = delta>0 ? (delta>betBefore?'Wygrana':'Remis') : 'Przegrana'
-      if(delta===0 && betBefore>0 && me.winReason!=='Remis') outcome='Przegrana'
-      detail = me.winReason
+      // If server says we won (reason contains key words) but payout is 0, show error
+      if(delta===0 && (reason.includes('Krupier spalił') || reason.includes('Wygrana'))) {
+          outcome = 'Błąd (0 PLN)'
+      } else if(delta===0 && betBefore>0 && reason!=='Remis') {
+          outcome='Przegrana'
+      }
+      detail = reason
   } else {
       if(mySc>21){ outcome='Przegrana'; detail=`Burst (${mySc})` }
       else if(dealerSc>21){ outcome='Wygrana'; detail=`Krupier spalił (${dealerSc})` }
       else if(mySc>dealerSc){ outcome='Wygrana'; detail=`${mySc} > ${dealerSc}` }
       else if(mySc<dealerSc){ outcome='Przegrana'; detail=`${mySc} < ${dealerSc}` }
       else { outcome='Remis'; detail=`${mySc} = ${dealerSc}` }
+      
+      if(betBefore > 0){
+           if(delta > betBefore) outcome = 'Wygrana'
+           else if(delta === betBefore) outcome = 'Remis'
+           else outcome = 'Przegrana'
+      } else {
+          if(outcome==='Wygrana') outcome='Info' 
+      }
   }
+  
+  if(outcome==='Wygrana' && delta===0){
+      outcome = 'Przegrana'
+      if(!detail) detail = 'Brak wygranej'
+  }
+
   title.textContent=`${outcome} • ${delta>0?'+':''}${delta}`
   const stakeText = betBefore ? `Stawka: ${betBefore}` : ''
   const pctText = betBefore ? `(${pct>0?'+':''}${pct}%)` : ''
@@ -279,7 +326,6 @@ async function start(){
   hub.on('JoinFailed',msg=>{ try{ alert(msg) }catch(e){} })
   hub.onreconnecting(()=>{
     const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='Łączenie...'
-    const deckEl=document.getElementById('deck'); if(deckEl) deckEl.textContent='-'
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=true
   })
   hub.onreconnected(()=>{
@@ -287,7 +333,6 @@ async function start(){
   })
   hub.onclose(()=>{
     const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='OFFLINE'
-    const deckEl=document.getElementById('deck'); if(deckEl) deckEl.textContent='-'
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=true
   })
   try{

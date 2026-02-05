@@ -167,7 +167,7 @@ public class GameHub : Hub
                     bool stay = false;
                     lock (_lock)
                     {
-                        if (State.Phase != "PLAY") return; 
+                        if (State.Phase != "PLAY") return;
                         if (State.Score(State.Dealer) >= 17)
                         {
                             stay = true;
@@ -185,7 +185,17 @@ public class GameHub : Hub
                 {
                     State.Finished = true;
                     State.Phase = "SETTLEMENT";
-                    State.Settle();
+                    try
+                    {
+                        State.Settle();
+                    }
+                    catch (Exception ex)
+                    {
+                        foreach(var p in State.Players)
+                        {
+                            if (string.IsNullOrEmpty(p.WinReason)) p.WinReason = "Błąd rozliczenia";
+                        }
+                    }
                 }
                 await Clients.All.SendAsync("State", State.ToDto());
             }
@@ -301,15 +311,18 @@ public class GameHub : Hub
             Finished=false; Phase="PLAY"; DealerActing=false;
             for(int r=0;r<2;r++)
             {
-                foreach(var p in Players){ p.Hand.Add(Deal()); }
+                foreach(var p in Players){ 
+                    if(p.Bet > 0) p.Hand.Add(Deal()); 
+                    else p.Finished=true;
+                }
                 Dealer.Add(Deal());
             }
             foreach(var p in Players)
             {
-                if (IsBlackjack(p.Hand)) { p.Stood=true; p.Finished=true; }
+                if (p.Hand.Count > 0 && IsBlackjack(p.Hand)) { p.Stood=true; p.Finished=true; }
             }
             var next = Players
-                .Where(x=> (x.Hand2!=null ? !(x.Finished1 && x.Finished2) : !x.Finished))
+                .Where(x=> (x.Hand.Count > 0) && (x.Hand2!=null ? !(x.Finished1 && x.Finished2) : !x.Finished))
                 .OrderBy(x=>x.Seat)
                 .FirstOrDefault();
             if (next!=null) ActiveSeat = next.Seat; else ActiveSeat = null; 
@@ -318,7 +331,7 @@ public class GameHub : Hub
         public void Hit(int seat)
         {
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
-            if (p==null || p.Finished) return;
+            if (p==null || p.Finished || p.Hand.Count == 0) return;
             p.Hand.Add(Deal());
             var sc = Score(p.Hand);
             if (sc>21){
@@ -406,6 +419,7 @@ public class GameHub : Hub
                 activeSeat = ActiveSeat,
                 finished = Finished,
                 phase = Phase,
+                dealerScore = Score(Dealer),
                 deck = 9999
             };
         }
@@ -496,43 +510,96 @@ public class GameHub : Hub
         {
             var dealerSc = Score(Dealer);
             var dealerBJ = IsBlackjack(Dealer);
+
             foreach(var p in Players)
             {
-                int payout = 0;
-                int payout2 = 0;
-                string r1 = "";
-                string r2 = "";
-                
-                Func<List<Card>,int, (int,string)> pay = (hand,bet)=>{
-                    if (bet<=0) return (0, "Brak stawki");
-                    var sc = Score(hand);
-                    var playerBJ = IsBlackjack(hand);
-                    if (sc>21) return (0, "Bust");
-                    if (dealerSc>21) return (bet*2, "Dealer Bust");
-                    if (playerBJ && !dealerBJ) return ((int)Math.Floor(bet*2.5), "Blackjack");
-                    if (dealerBJ && !playerBJ) return (0, "Dealer Blackjack");
-                    if (sc>dealerSc) return (bet*2, "Wygrana");
-                    if (sc<dealerSc) return (0, "Przegrana");
-                    return (bet, "Remis");
-                };
+                try
+                {
+                    int totalPayout = 0;
+                    string r1 = "";
+                    string r2 = "";
 
-                if (p.Hand1!=null) { var res = pay(p.Hand1, p.Bet1); payout = res.Item1; r1 = res.Item2; }
-                else { var res = pay(p.Hand, p.Bet); payout = res.Item1; r1 = res.Item2; }
-                
-                if (p.Hand2!=null) { var res = pay(p.Hand2, p.Bet2); payout2 = res.Item1; r2 = res.Item2; }
+                    // Local helper to calculate outcome for one hand
+                    (int payout, string reason) ResolveHand(List<Card> hand, int bet)
+                    {
+                        if (bet <= 0 || hand == null || hand.Count == 0) return (0, "");
 
-                var newMoney = p.Money + payout + payout2;
-                if (newMoney < 0) newMoney = 0;
-                if (newMoney > 1_000_000) newMoney = 1_000_000;
-                p.Money = newMoney;
-                p.LastWin = payout + payout2;
-                p.LastBet = (p.Bet1 + p.Bet2 > 0) ? p.Bet1 + p.Bet2 : p.Bet;
-                
-                if (p.Hand2!=null) p.WinReason = $"{r1} | {r2}";
-                else p.WinReason = r1;
+                        var sc = Score(hand);
+                        var isBJ = IsBlackjack(hand);
 
-                p.Bet = 0; p.Bet1=0; p.Bet2=0;
-                p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false;
+                        // 1. Player Busts always lose
+                        if (sc > 21) return (0, $"Spaliłeś ({sc})");
+
+                        // 2. Player Blackjack
+                        if (isBJ)
+                        {
+                            // If Dealer also has BJ -> Push
+                            if (dealerBJ) return (bet, "Remis (Blackjack)");
+                            // Else Player wins 3:2
+                            return ((int)Math.Floor(bet * 2.5), "Blackjack");
+                        }
+
+                        // 3. Dealer Busts (Player did not bust) -> Player Wins
+                        if (dealerSc > 21) return (bet * 2, $"Krupier spalił ({dealerSc}) [B:{bet} W:{bet*2}]");
+
+                        // 4. Dealer has Blackjack (Player does not) -> Player Loses
+                        if (dealerBJ) return (0, "Blackjack Krupiera");
+
+                        // 5. Compare Scores
+                        if (sc > dealerSc) return (bet * 2, $"Wygrana ({sc} > {dealerSc}) [B:{bet} W:{bet*2}]");
+                        if (sc < dealerSc) return (0, $"Przegrana ({sc} < {dealerSc})");
+                        
+                        // 6. Tie
+                        return (bet, $"Remis ({sc} = {dealerSc}) [B:{bet} W:{bet}]");
+                    }
+
+                    // Process Hand 1 (Split) OR Main Hand
+                    if (p.Hand1 != null)
+                    {
+                        var res = ResolveHand(p.Hand1, p.Bet1);
+                        totalPayout += res.payout;
+                        r1 = res.reason;
+                    }
+                    else
+                    {
+                        var res = ResolveHand(p.Hand, p.Bet);
+                        totalPayout += res.payout;
+                        r1 = res.reason;
+                    }
+
+                    // Process Hand 2 (Split)
+                    if (p.Hand2 != null)
+                    {
+                        var res = ResolveHand(p.Hand2, p.Bet2);
+                        totalPayout += res.payout;
+                        r2 = res.reason;
+                    }
+
+                    // Update Player Money & Stats
+                    long newMoney = (long)p.Money + totalPayout;
+                    if (newMoney > 1_000_000) newMoney = 1_000_000;
+                    p.Money = (int)newMoney;
+
+                    p.LastWin = totalPayout;
+                    p.LastBet = (p.Hand1 != null || p.Hand2 != null) ? (p.Bet1 + p.Bet2) : p.Bet;
+
+                    if (p.Hand2 != null) p.WinReason = $"{r1} | {r2}";
+                    else p.WinReason = r1;
+
+                    if (string.IsNullOrEmpty(p.WinReason)) p.WinReason = "Rozliczono";
+                }
+                catch (Exception ex)
+                {
+                    p.WinReason = $"Błąd: {ex.Message}";
+                    p.LastWin = 0;
+                }
+                finally
+                {
+                    // Reset round state for player
+                    p.Bet = 0; p.Bet1 = 0; p.Bet2 = 0;
+                    p.Hand1 = null; p.Hand2 = null;
+                    p.Finished1 = false; p.Finished2 = false;
+                }
             }
         }
     }
