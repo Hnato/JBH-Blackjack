@@ -229,6 +229,8 @@ public class GameHub : Hub
         public int Bet { get; set; }
         public int Bet1 { get; set; }
         public int Bet2 { get; set; }
+        public int LastWin { get; set; }
+        public int LastBet { get; set; }
         public bool Finished1 { get; set; }
         public bool Finished2 { get; set; }
     }
@@ -245,7 +247,7 @@ public class GameHub : Hub
         public bool DealerActing { get; set; }
         public string Phase { get; set; } = "BETTING";
         public int DeckCount { get; set; }
-        private const int DecksInShoe = 6;
+        private const int DecksInShoe = 667;
         public List<Card> Deck { get; set; } = new List<Card>();
 
         public GameState()
@@ -408,6 +410,8 @@ public class GameHub : Hub
                     bet=p.Bet,
                     bet1=p.Bet1,
                     bet2=p.Bet2,
+                    lastWin=p.LastWin,
+                    lastBet=p.LastBet,
                     stood=p.Stood,
                     finished=p.Finished,
                     finished1=p.Finished1,
@@ -428,7 +432,7 @@ public class GameHub : Hub
         public void NewBets()
         {
             Dealer.Clear();
-            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Bet=0; }
+            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Bet=0; p.LastWin=0; p.LastBet=0; }
             Finished=false; ActiveSeat=null; Phase="BETTING"; Deck = BuildDeck(); Shuffle(Deck); DeckCount=Deck.Count;
         }
         
@@ -534,6 +538,8 @@ public class GameHub : Hub
                 if (newMoney < 0) newMoney = 0;
                 if (newMoney > 1_000_000) newMoney = 1_000_000;
                 p.Money = newMoney;
+                p.LastWin = payout + payout2;
+                p.LastBet = (p.Bet1 + p.Bet2 > 0) ? p.Bet1 + p.Bet2 : p.Bet;
                 p.Bet = 0; p.Bet1=0; p.Bet2=0;
                 p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false;
             }

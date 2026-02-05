@@ -157,10 +157,8 @@ function renderResult(){
   if(state.phase!=='SETTLEMENT' || !me){ modal.classList.add('hidden'); return }
   const dealerSc=score(state.dealer)
   const mySc=me.score!=null?me.score:score(me.hand)
-  const prevMe = prevState ? prevState.players.find(p=>p.id===meId) : null
-  const betBefore = prevMe ? (prevMe.bet||0) : 0
-  const moneyBefore = prevMe ? (prevMe.money||0) : me.money
-  const delta = me.money - moneyBefore
+  const betBefore = me.lastBet || 0
+  const delta = me.lastWin || 0
   const pct = betBefore>0 ? Math.round((delta/betBefore)*100) : 0
   let outcome, detail
   if(mySc>21){ outcome='Przegrana'; detail=`Burst (${mySc})` }
