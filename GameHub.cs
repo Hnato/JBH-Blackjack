@@ -152,34 +152,51 @@ public class GameHub : Hub
 
         private async Task RunDealerSequence()
         {
-            while (true)
-            {
-                await Task.Delay(1000);
-                bool stay = false;
-                lock (_lock)
-                {
-                    if (State.Phase != "PLAY") return; 
-                    if (State.Score(State.Dealer) >= 17)
-                    {
-                        stay = true;
-                    }
-                    else
-                    {
-                        State.Dealer.Add(State.Deal());
-                        State.DeckCount = State.Deck.Count; 
-                    }
-                }
-                await Clients.All.SendAsync("State", State.ToDto());
-                if (stay) break;
-            }
-
             lock (_lock)
             {
-                State.Finished = true;
-                State.Phase = "SETTLEMENT";
-                State.Settle();
+                if (State.Phase != "PLAY") return;
+                if (State.DealerActing) return;
+                State.DealerActing = true;
             }
-            await Clients.All.SendAsync("State", State.ToDto());
+
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(1000);
+                    bool stay = false;
+                    lock (_lock)
+                    {
+                        if (State.Phase != "PLAY") return; 
+                        if (State.Score(State.Dealer) >= 17)
+                        {
+                            stay = true;
+                        }
+                        else
+                        {
+                            State.Dealer.Add(State.Deal());
+                            State.DeckCount = State.Deck.Count; 
+                        }
+                    }
+                    await Clients.All.SendAsync("State", State.ToDto());
+                    if (stay) break;
+                }
+
+                lock (_lock)
+                {
+                    State.Finished = true;
+                    State.Phase = "SETTLEMENT";
+                    State.Settle();
+                }
+                await Clients.All.SendAsync("State", State.ToDto());
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    State.DealerActing = false;
+                }
+            }
         }
 
     private bool IsHost(HubCallerContext ctx)
@@ -225,6 +242,7 @@ public class GameHub : Hub
         public Dictionary<string,int> ConnectionSeat { get; set; } = new Dictionary<string,int>();
         public int? ActiveSeat { get; set; }
         public bool Finished { get; set; }
+        public bool DealerActing { get; set; }
         public string Phase { get; set; } = "BETTING";
         public int DeckCount { get; set; }
         private const int DecksInShoe = 6;
@@ -284,7 +302,7 @@ public class GameHub : Hub
         {
             Dealer.Clear();
             foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false; p.Bet1=p.Bet; p.Bet2=0; }
-            Finished=false; Phase="PLAY";
+            Finished=false; Phase="PLAY"; DealerActing=false;
             Deck = BuildDeck();
             Shuffle(Deck);
             for(int r=0;r<2;r++)
@@ -440,7 +458,7 @@ public class GameHub : Hub
             var extraCap = Math.Max(0, 2000 - (p.Bet1+p.Bet2));
             var extra = Math.Min(currentBet, Math.Min(extraCap, p.Money));
             if (extra<=0) return;
-            if (p.Hand2!=null && p.Hand==p.Hand2){ p.Bet2 += extra; } else { if(p.Hand1!=null) p.Bet1 += extra; else p.Bet += extra; }
+            if (p.Hand2!=null && p.Hand==p.Hand2){ p.Bet2 += extra; } else { if(p.Hand1!=null) p.Bet1 += extra; else { p.Bet += extra; p.Bet1 += extra; } }
             p.Money -= extra;
             p.Hand.Add(Deal()); DeckCount = Deck.Count;
             if (p.Hand2!=null)
@@ -510,7 +528,7 @@ public class GameHub : Hub
                     return bet;
                 };
                 if (p.Hand1!=null) payout = pay(p.Hand1, p.Bet1);
-                else payout = pay(p.Hand, p.Bet1>0? p.Bet1 : p.Bet);
+                else payout = pay(p.Hand, p.Bet);
                 if (p.Hand2!=null) payout2 = pay(p.Hand2, p.Bet2);
                 var newMoney = p.Money + payout + payout2;
                 if (newMoney < 0) newMoney = 0;
