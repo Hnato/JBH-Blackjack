@@ -131,7 +131,7 @@ function render(){
   }
 
   setControls()
-  // balans w HUD
+  
   const balEl=document.getElementById('balance')
   const myId=(hub && hub.connectionId) || state.hostId || state.adminId
   const me=state.players.find(p=>p.id===myId)
@@ -271,7 +271,7 @@ document.getElementById('split').addEventListener('click',(e)=>{clickFX(e.target
 async function start(){
   hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()
   hub.on('State',s=>{prevState=state;state=s;render()})
-  hub.on('Welcome',()=>{ /* noop, but confirms connection */ })
+  hub.on('Welcome',()=>{  })
   hub.on('JoinFailed',msg=>{ try{ alert(msg) }catch(e){} })
   hub.onreconnecting(()=>{
     const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='Łączenie...'
@@ -302,7 +302,7 @@ document.getElementById('join').addEventListener('click',async()=>{
   const connected = hub && hub.state===signalR.HubConnectionState.Connected
   if(connected){ await hub.invoke('Join', name) }
   else {
-    try{ await hub.start(); await hub.invoke('Join', name) }catch(e){ /* ignore */ }
+    try{ await hub.start(); await hub.invoke('Join', name) }catch(e){  }
   }
 })
 

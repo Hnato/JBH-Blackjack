@@ -68,75 +68,119 @@ public class GameHub : Hub
     }
 
     public async Task StartGame()
-    {
-        if (!IsHost(Context)) return;
-        lock (_lock)
         {
-            State.StartGame();
+            if (!IsHost(Context)) return;
+            bool triggerDealer = false;
+            lock (_lock)
+            {
+                State.StartGame();
+                triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
+            if (triggerDealer) await RunDealerSequence();
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task NewBets()
-    {
-        if (!IsHost(Context)) return;
-        lock (_lock)
+        public async Task NewBets()
         {
-            State.NewBets();
+            if (!IsHost(Context)) return;
+            lock (_lock)
+            {
+                State.NewBets();
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task Hit()
-    {
-        lock (_lock)
+        public async Task Hit()
         {
-            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-            State.Hit(seat);
+            bool triggerDealer = false;
+            lock (_lock)
+            {
+                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+                State.Hit(seat);
+                triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
+            if (triggerDealer) await RunDealerSequence();
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task Stand()
-    {
-        lock (_lock)
+        public async Task Stand()
         {
-            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-            State.Stand(seat);
+            bool triggerDealer = false;
+            lock (_lock)
+            {
+                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+                State.Stand(seat);
+                triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
+            if (triggerDealer) await RunDealerSequence();
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task PlaceBet(int amount)
-    {
-        lock (_lock)
+        public async Task PlaceBet(int amount)
         {
-            if (State.Phase != "BETTING") return;
-            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-            State.PlaceBet(seat, amount);
+            lock (_lock)
+            {
+                if (State.Phase != "BETTING") return;
+                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+                State.PlaceBet(seat, amount);
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task DoubleDown()
-    {
-        lock (_lock)
+        public async Task DoubleDown()
         {
-            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-            State.DoubleDown(seat);
+            bool triggerDealer = false;
+            lock (_lock)
+            {
+                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+                State.DoubleDown(seat);
+                triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
+            if (triggerDealer) await RunDealerSequence();
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
 
-    public async Task Split()
-    {
-        lock (_lock)
+        public async Task Split()
         {
-            if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-            State.Split(seat);
+            lock (_lock)
+            {
+                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
+                State.Split(seat);
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
         }
-        await Clients.All.SendAsync("State", State.ToDto());
-    }
+
+        private async Task RunDealerSequence()
+        {
+            while (true)
+            {
+                await Task.Delay(1000);
+                bool stay = false;
+                lock (_lock)
+                {
+                    if (State.Phase != "PLAY") return; 
+                    if (State.Score(State.Dealer) >= 17)
+                    {
+                        stay = true;
+                    }
+                    else
+                    {
+                        State.Dealer.Add(State.Deal());
+                        State.DeckCount = State.Deck.Count; 
+                    }
+                }
+                await Clients.All.SendAsync("State", State.ToDto());
+                if (stay) break;
+            }
+
+            lock (_lock)
+            {
+                State.Finished = true;
+                State.Phase = "SETTLEMENT";
+                State.Settle();
+            }
+            await Clients.All.SendAsync("State", State.ToDto());
+        }
 
     private bool IsHost(HubCallerContext ctx)
     {
@@ -184,7 +228,7 @@ public class GameHub : Hub
         public string Phase { get; set; } = "BETTING";
         public int DeckCount { get; set; }
         private const int DecksInShoe = 6;
-        private List<Card> Deck { get; set; } = new List<Card>();
+        public List<Card> Deck { get; set; } = new List<Card>();
 
         public GameState()
         {
@@ -256,7 +300,7 @@ public class GameHub : Hub
                 .Where(x=> (x.Hand2!=null ? !(x.Finished1 && x.Finished2) : !x.Finished))
                 .OrderBy(x=>x.Seat)
                 .FirstOrDefault();
-            if (next!=null) ActiveSeat = next.Seat; else { DealerPlay(); Finished=true; Phase="SETTLEMENT"; Settle(); }
+            if (next!=null) ActiveSeat = next.Seat; else ActiveSeat = null; 
         }
 
         public void Hit(int seat)
@@ -288,12 +332,7 @@ public class GameHub : Hub
                 .OrderBy(x=>x.Seat)
                 .FirstOrDefault();
             if (next!=null){ ActiveSeat=next.Seat; return; }
-            DealerPlay(); Finished=true; Phase="SETTLEMENT"; Settle();
-        }
-
-        private void DealerPlay()
-        {
-            while(Score(Dealer) < 17){ Dealer.Add(Deal()); DeckCount = Deck.Count; }
+            ActiveSeat = null;
         }
 
         private List<Card> BuildDeck()
@@ -313,7 +352,7 @@ public class GameHub : Hub
             for(int i=a.Count-1;i>0;i--){ int j=System.Security.Cryptography.RandomNumberGenerator.GetInt32(i+1); var t=a[i]; a[i]=a[j]; a[j]=t; }
         }
 
-        private Card Deal(){ var c = Deck[^1]; Deck.RemoveAt(Deck.Count-1); return c; }
+        public Card Deal(){ var c = Deck[^1]; Deck.RemoveAt(Deck.Count-1); return c; }
 
         private int ValueOf(Card c)
         {
@@ -322,7 +361,7 @@ public class GameHub : Hub
             return int.Parse(c.r);
         }
 
-        private int Score(List<Card> hand)
+        public int Score(List<Card> hand)
         {
             int total=0; int aces=0;
             foreach(var c in hand){ total+=ValueOf(c); if(c.r=="A") aces++; }
@@ -374,7 +413,7 @@ public class GameHub : Hub
             foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Bet=0; }
             Finished=false; ActiveSeat=null; Phase="BETTING"; Deck = BuildDeck(); Shuffle(Deck); DeckCount=Deck.Count;
         }
-
+        
         public void PlaceBet(int seat, int amount)
         {
             if (Phase != "BETTING") return;
@@ -427,7 +466,6 @@ public class GameHub : Hub
             }
             p.Bet = p.Bet1 + p.Bet2;
         }
-
         public void Split(int seat)
         {
             if (Phase != "PLAY") return;
@@ -451,8 +489,7 @@ public class GameHub : Hub
             p.Finished=false; p.Stood=false; p.Finished1=false; p.Finished2=false;
             p.Bet = p.Bet1 + p.Bet2;
         }
-
-        private void Settle()
+        public void Settle()
         {
             var dealerSc = Score(Dealer);
             var dealerBJ = IsBlackjack(Dealer);
@@ -470,7 +507,7 @@ public class GameHub : Hub
                     if (dealerBJ && !playerBJ) return 0;
                     if (sc>dealerSc) return bet*2;
                     if (sc<dealerSc) return 0;
-                    return bet; // push
+                    return bet;
                 };
                 if (p.Hand1!=null) payout = pay(p.Hand1, p.Bet1);
                 else payout = pay(p.Hand, p.Bet1>0? p.Bet1 : p.Bet);
