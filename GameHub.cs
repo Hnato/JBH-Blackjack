@@ -175,7 +175,6 @@ public class GameHub : Hub
                         else
                         {
                             State.Dealer.Add(State.Deal());
-                            State.DeckCount = State.Deck.Count; 
                         }
                     }
                     await Clients.All.SendAsync("State", State.ToDto());
@@ -231,6 +230,7 @@ public class GameHub : Hub
         public int Bet2 { get; set; }
         public int LastWin { get; set; }
         public int LastBet { get; set; }
+        public string WinReason { get; set; } = "";
         public bool Finished1 { get; set; }
         public bool Finished2 { get; set; }
     }
@@ -246,15 +246,9 @@ public class GameHub : Hub
         public bool Finished { get; set; }
         public bool DealerActing { get; set; }
         public string Phase { get; set; } = "BETTING";
-        public int DeckCount { get; set; }
-        private const int DecksInShoe = 667;
-        public List<Card> Deck { get; set; } = new List<Card>();
-
+        
         public GameState()
         {
-            Deck = BuildDeck();
-            Shuffle(Deck);
-            DeckCount = Deck.Count;
         }
 
         public (bool,int) AddPlayer(string id, string name)
@@ -303,14 +297,12 @@ public class GameHub : Hub
         public void StartGame()
         {
             Dealer.Clear();
-            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false; p.Bet1=p.Bet; p.Bet2=0; }
+            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false; p.Bet1=p.Bet; p.Bet2=0; p.LastWin=0; p.LastBet=0; p.WinReason=""; }
             Finished=false; Phase="PLAY"; DealerActing=false;
-            Deck = BuildDeck();
-            Shuffle(Deck);
             for(int r=0;r<2;r++)
             {
-                foreach(var p in Players){ p.Hand.Add(Deal()); DeckCount = Deck.Count; }
-                Dealer.Add(Deal()); DeckCount = Deck.Count;
+                foreach(var p in Players){ p.Hand.Add(Deal()); }
+                Dealer.Add(Deal());
             }
             foreach(var p in Players)
             {
@@ -327,7 +319,7 @@ public class GameHub : Hub
         {
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
             if (p==null || p.Finished) return;
-            p.Hand.Add(Deal()); DeckCount = Deck.Count;
+            p.Hand.Add(Deal());
             var sc = Score(p.Hand);
             if (sc>21){
                 if (p.Hand2!=null && !p.Finished2 && p.Hand==p.Hand1){ p.Finished1=true; p.Hand=p.Hand2; p.Stood=false; p.Finished=false; return; }
@@ -355,24 +347,12 @@ public class GameHub : Hub
             ActiveSeat = null;
         }
 
-        private List<Card> BuildDeck()
+        public Card Deal()
         {
-            var d = new List<Card>();
-            for(int k=0;k<DecksInShoe;k++)
-            {
-                foreach(var s in Suits)
-                    foreach(var r in Ranks)
-                        d.Add(new Card{ r=r, s=s });
-            }
-            return d;
+            var r = Ranks[System.Security.Cryptography.RandomNumberGenerator.GetInt32(Ranks.Length)];
+            var s = Suits[System.Security.Cryptography.RandomNumberGenerator.GetInt32(Suits.Length)];
+            return new Card { r = r, s = s };
         }
-
-        private void Shuffle(List<Card> a)
-        {
-            for(int i=a.Count-1;i>0;i--){ int j=System.Security.Cryptography.RandomNumberGenerator.GetInt32(i+1); var t=a[i]; a[i]=a[j]; a[j]=t; }
-        }
-
-        public Card Deal(){ var c = Deck[^1]; Deck.RemoveAt(Deck.Count-1); return c; }
 
         private int ValueOf(Card c)
         {
@@ -412,6 +392,7 @@ public class GameHub : Hub
                     bet2=p.Bet2,
                     lastWin=p.LastWin,
                     lastBet=p.LastBet,
+                    winReason=p.WinReason,
                     stood=p.Stood,
                     finished=p.Finished,
                     finished1=p.Finished1,
@@ -425,15 +406,15 @@ public class GameHub : Hub
                 activeSeat = ActiveSeat,
                 finished = Finished,
                 phase = Phase,
-                deck = DeckCount
+                deck = 9999
             };
         }
 
         public void NewBets()
         {
             Dealer.Clear();
-            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Bet=0; p.LastWin=0; p.LastBet=0; }
-            Finished=false; ActiveSeat=null; Phase="BETTING"; Deck = BuildDeck(); Shuffle(Deck); DeckCount=Deck.Count;
+            foreach(var p in Players){ p.Hand.Clear(); p.Stood=false; p.Finished=false; p.Bet=0; p.LastWin=0; p.LastBet=0; p.WinReason=""; }
+            Finished=false; ActiveSeat=null; Phase="BETTING";
         }
         
         public void PlaceBet(int seat, int amount)
@@ -464,7 +445,7 @@ public class GameHub : Hub
             if (extra<=0) return;
             if (p.Hand2!=null && p.Hand==p.Hand2){ p.Bet2 += extra; } else { if(p.Hand1!=null) p.Bet1 += extra; else { p.Bet += extra; p.Bet1 += extra; } }
             p.Money -= extra;
-            p.Hand.Add(Deal()); DeckCount = Deck.Count;
+            p.Hand.Add(Deal());
             if (p.Hand2!=null)
             {
                 if (p.Hand==p.Hand1)
@@ -506,8 +487,8 @@ public class GameHub : Hub
             p.Hand1 = new List<Card>{ p.Hand[0] };
             p.Hand2 = new List<Card>{ p.Hand[1] };
             p.Hand = p.Hand1;
-            p.Hand1.Add(Deal()); DeckCount = Deck.Count;
-            p.Hand2.Add(Deal()); DeckCount = Deck.Count;
+            p.Hand1.Add(Deal());
+            p.Hand2.Add(Deal());
             p.Finished=false; p.Stood=false; p.Finished1=false; p.Finished2=false;
             p.Bet = p.Bet1 + p.Bet2;
         }
@@ -519,27 +500,37 @@ public class GameHub : Hub
             {
                 int payout = 0;
                 int payout2 = 0;
-                Func<List<Card>,int,int> pay = (hand,bet)=>{
-                    if (bet<=0) return 0;
+                string r1 = "";
+                string r2 = "";
+                
+                Func<List<Card>,int, (int,string)> pay = (hand,bet)=>{
+                    if (bet<=0) return (0, "Brak stawki");
                     var sc = Score(hand);
                     var playerBJ = IsBlackjack(hand);
-                    if (sc>21) return 0;
-                    if (dealerSc>21) return bet*2;
-                    if (playerBJ && !dealerBJ) return (int)Math.Floor(bet*2.5);
-                    if (dealerBJ && !playerBJ) return 0;
-                    if (sc>dealerSc) return bet*2;
-                    if (sc<dealerSc) return 0;
-                    return bet;
+                    if (sc>21) return (0, "Bust");
+                    if (dealerSc>21) return (bet*2, "Dealer Bust");
+                    if (playerBJ && !dealerBJ) return ((int)Math.Floor(bet*2.5), "Blackjack");
+                    if (dealerBJ && !playerBJ) return (0, "Dealer Blackjack");
+                    if (sc>dealerSc) return (bet*2, "Wygrana");
+                    if (sc<dealerSc) return (0, "Przegrana");
+                    return (bet, "Remis");
                 };
-                if (p.Hand1!=null) payout = pay(p.Hand1, p.Bet1);
-                else payout = pay(p.Hand, p.Bet);
-                if (p.Hand2!=null) payout2 = pay(p.Hand2, p.Bet2);
+
+                if (p.Hand1!=null) { var res = pay(p.Hand1, p.Bet1); payout = res.Item1; r1 = res.Item2; }
+                else { var res = pay(p.Hand, p.Bet); payout = res.Item1; r1 = res.Item2; }
+                
+                if (p.Hand2!=null) { var res = pay(p.Hand2, p.Bet2); payout2 = res.Item1; r2 = res.Item2; }
+
                 var newMoney = p.Money + payout + payout2;
                 if (newMoney < 0) newMoney = 0;
                 if (newMoney > 1_000_000) newMoney = 1_000_000;
                 p.Money = newMoney;
                 p.LastWin = payout + payout2;
                 p.LastBet = (p.Bet1 + p.Bet2 > 0) ? p.Bet1 + p.Bet2 : p.Bet;
+                
+                if (p.Hand2!=null) p.WinReason = $"{r1} | {r2}";
+                else p.WinReason = r1;
+
                 p.Bet = 0; p.Bet1=0; p.Bet2=0;
                 p.Hand1=null; p.Hand2=null; p.Finished1=false; p.Finished2=false;
             }

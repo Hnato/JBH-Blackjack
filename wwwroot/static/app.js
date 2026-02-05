@@ -39,7 +39,7 @@ function spreadArc(start,end,n){ const step=(end-start)/(n-1); return Array.from
 function render(){
   const connected = hub && hub.state===signalR.HubConnectionState.Connected
   document.getElementById('phase').textContent= connected ? (state.phase||'BETTING') : 'OFFLINE'
-  document.getElementById('deck').textContent= connected ? String(state.deck||0) : '-'
+  document.getElementById('deck').textContent= '∞'
   if(state.phase==='SETTLEMENT'){ ui.stood=false }
 
   const seatsEl=document.getElementById('seats');seatsEl.innerHTML=''
@@ -161,11 +161,17 @@ function renderResult(){
   const delta = me.lastWin || 0
   const pct = betBefore>0 ? Math.round((delta/betBefore)*100) : 0
   let outcome, detail
-  if(mySc>21){ outcome='Przegrana'; detail=`Burst (${mySc})` }
-  else if(dealerSc>21){ outcome='Wygrana'; detail=`Krupier spalił (${dealerSc})` }
-  else if(mySc>dealerSc){ outcome='Wygrana'; detail=`${mySc} > ${dealerSc}` }
-  else if(mySc<dealerSc){ outcome='Przegrana'; detail=`${mySc} < ${dealerSc}` }
-  else { outcome='Remis'; detail=`${mySc} = ${dealerSc}` }
+  if(me.winReason) {
+      outcome = delta>0 ? (delta>betBefore?'Wygrana':'Remis') : 'Przegrana'
+      if(delta===0 && betBefore>0 && me.winReason!=='Remis') outcome='Przegrana'
+      detail = me.winReason
+  } else {
+      if(mySc>21){ outcome='Przegrana'; detail=`Burst (${mySc})` }
+      else if(dealerSc>21){ outcome='Wygrana'; detail=`Krupier spalił (${dealerSc})` }
+      else if(mySc>dealerSc){ outcome='Wygrana'; detail=`${mySc} > ${dealerSc}` }
+      else if(mySc<dealerSc){ outcome='Przegrana'; detail=`${mySc} < ${dealerSc}` }
+      else { outcome='Remis'; detail=`${mySc} = ${dealerSc}` }
+  }
   title.textContent=`${outcome} • ${delta>0?'+':''}${delta}`
   const stakeText = betBefore ? `Stawka: ${betBefore}` : ''
   const pctText = betBefore ? `(${pct>0?'+':''}${pct}%)` : ''
