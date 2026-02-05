@@ -495,7 +495,6 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
 @keyframes tableShimmer { 0%{opacity:.0} 30%{opacity:.08} 60%{opacity:.0} 100%{opacity:.0} }
 .avatar-strip{display:none}
 .avatar{display:none}
-/* Overrides */
 .card.front{ z-index: 1 }
 .card.back{ z-index: 2 }
 .card.back::after{ content: none }
