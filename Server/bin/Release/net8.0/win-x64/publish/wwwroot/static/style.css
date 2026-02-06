@@ -119,10 +119,12 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
 .seat .cards .card+.card {
   margin-left: -38px;
 }
-.seat .cards.split { display:flex; gap: 16px; align-items: flex-start }
-.seat .cards.split .hand { display:flex }
-.seat .cards.split .hand.active { outline:2px solid rgba(255,210,77,.6); border-radius: 12px; padding: 2px }
-.seat .cards.split .hand-bet { position:absolute; transform: translateY(-100%); margin-left: 6px; font-size: 11px; color: #cfd9d0 }
+.seat .cards.split { display:flex; gap: 12px; align-items: flex-start; justify-content: center }
+.seat .cards.split .hand { display:flex; flex-direction: column; align-items: center; transform: scale(0.9); transform-origin: top center; position: relative; }
+.seat .cards.split .hand.active { outline:2px solid rgba(255,210,77,.8); border-radius: 12px; z-index: 10; background: rgba(255,210,77,0.05); }
+.seat .cards.split .hand-cards { display:flex; flex-direction: row; }
+.seat .cards.split .hand-cards .card+.card { margin-left: -38px; }
+.seat .cards.split .hand-bet { position:static; transform: none; margin-top: 4px; font-size: 11px; color: #ffd24d; font-weight: bold; text-shadow: 0 1px 2px black; }
 .seat .chips-row {
   position: relative;
   width: 90px;

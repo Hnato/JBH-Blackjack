@@ -107,15 +107,25 @@ function render(){
       cards.className='cards split'
       const h1=document.createElement('div'); h1.className='hand hand1'
       const h2=document.createElement('div'); h2.className='hand hand2'
+      
+      const hc1=document.createElement('div'); hc1.className='hand-cards'
+      const hc2=document.createElement('div'); hc2.className='hand-cards'
+
       const b1=document.createElement('div'); b1.className='hand-bet'; b1.textContent = `Stawka: ${p.bet1||0}`
       const b2=document.createElement('div'); b2.className='hand-bet'; b2.textContent = `Stawka: ${p.bet2||0}`
+      
       const prevP = prevState ? prevState.players.find(pp=>pp.seat===p.seat) : null
       const prevLen1 = prevP && prevP.hand1 ? prevP.hand1.length : 0
       const prevLen2 = prevP && prevP.hand2 ? prevP.hand2.length : 0
-      ;(p.hand1||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen1; h1.appendChild(cardEl(c,true,i,animate)) })
-      ;(p.hand2||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen2; h2.appendChild(cardEl(c,true,i,animate)) })
+      
+      ;(p.hand1||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen1; hc1.appendChild(cardEl(c,true,i,animate)) })
+      ;(p.hand2||[]).forEach((c,i)=>{ const animate=!prevState || i>=prevLen2; hc2.appendChild(cardEl(c,true,i,animate)) })
+      
       if(p.activeHand===1) h1.classList.add('active'); else if(p.activeHand===2) h2.classList.add('active')
-      h1.appendChild(b1); h2.appendChild(b2)
+      
+      h1.appendChild(hc1); h1.appendChild(b1);
+      h2.appendChild(hc2); h2.appendChild(b2);
+      
       cards.appendChild(h1); cards.appendChild(h2)
     } else {
       cards.className='cards'
@@ -274,6 +284,10 @@ function setControls(){
   const myId = meId || (hub && hub.connectionId)
   const me=state.players.find(p=>p.id===myId)
   if(state.phase!=='PLAY'){ ui.stood=false }
+  
+  // Logic Fix: Ensure ui.stood is reset when switching to the second hand in Split mode
+  if(me && me.activeHand===2 && !me.finished2 && !me.finished){ ui.stood=false }
+
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
   document.querySelectorAll('.play').forEach(b=>{b.style.display=(!!me && state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
@@ -281,9 +295,11 @@ function setControls(){
   if(splitBtn){
     const hasSplit = !!me && (me.hand1 || me.hand2)
     const meHand=me?me.hand:[]
-    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K'))) && (me.money >= (me.bet||0))
-    splitBtn.style.display = (!!me && state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
-    splitBtn.disabled = !canSplit
+    const canSplit = !!me && !hasSplit && !ui.stood && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K'))) && (me.money >= (me.bet||0))
+    // Hide split button if already split OR if hand length != 2 (user hit)
+    // Only show if canSplit is strictly true (pair + money + turn)
+    splitBtn.style.display = canSplit ? 'inline-block' : 'none'
+    splitBtn.disabled = false 
   }
   const doubleBtn=document.getElementById('double')
   if(doubleBtn){
@@ -336,7 +352,31 @@ document.getElementById('bets').addEventListener('click',(e)=>{clickFX(e.target)
 document.getElementById('hit').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('Hit')})
 document.getElementById('stand').addEventListener('click',(e)=>{clickFX(e.target); ui.stood=true; document.querySelectorAll('.play').forEach(b=>{b.disabled=true; b.style.display='none'}); const reset=document.getElementById('reset'); if(reset){ reset.style.display='none' } hub.invoke('Stand'); setControls()})
 document.getElementById('double').addEventListener('click',(e)=>{clickFX(e.target); document.querySelectorAll('.play').forEach(b=>b.disabled=true); hub.invoke('DoubleDown')})
-document.getElementById('split').addEventListener('click',(e)=>{clickFX(e.target); hub.invoke('Split')})
+document.getElementById('split').addEventListener('click',(e)=>{
+     clickFX(e.target);
+     const myId=myConnectionId || (hub && hub.connectionId)
+     const me=state.players.find(p=>p.id===myId)
+     if(me) {
+         // Client-side validation with alerts
+         const meHand=me.hand||[]
+         if(state.phase!=='PLAY') { alert('To nie jest faza gry'); return }
+         if(state.activeSeat!==me.seat) { alert('To nie twoja kolej!'); return }
+         if(meHand.length!==2) { alert('Możesz rozdzielić tylko mając 2 karty'); return }
+         
+         const isPair = ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K')))
+         if(!isPair) { alert('Możesz rozdzielić tylko parę!'); return }
+         
+         if(me.money < (me.bet||0)) { alert(`Brak środków! Masz ${me.money}, potrzeba ${me.bet}`); return }
+
+         console.log('Sending Split for seat', me.seat)
+         hub.invoke('Split', me.seat)
+            .then(res => {
+                console.log('Split result:', res)
+                if(res && res.success === false) alert(res.message)
+            })
+            .catch(err => console.error('Split invoke error:', err))
+     }
+  })
 
 async function start(){
   hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()

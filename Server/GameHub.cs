@@ -128,12 +128,8 @@ public class GameHub : Hub
             await Clients.All.SendAsync("State", State.ToDto());
         }
 
-        public async Task ResetGame()
-        {
-            // Deprecated logic to avoid full server reset.
-            // Client should handle reload. 
-            // We can just log it or ignore.
-        }
+        public async Task ResetGame() {}
+
 
         public async Task Hit()
         {
@@ -185,20 +181,28 @@ public class GameHub : Hub
             if (triggerDealer) _ = RunDealerSequence();
         }
 
-        public async Task Split()
+        public async Task<object> Split(int seat)
         {
-            string? error = null;
+            bool success = false;
+            string message = "";
+
             lock (_lock)
             {
-                if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-                var (ok, msg) = State.Split(seat);
-                if (!ok) error = msg;
+                if (!State.TryGetSeat(Context.ConnectionId, out var actualSeat)) 
+                    return new { success=false, message="Błąd: Brak gracza" };
+
+                if (actualSeat != seat) 
+                    return new { success=false, message="Błąd: Nieprawidłowe miejsce" };
+
+                (success, message) = State.Split(seat);
             }
-            if (error != null)
+
+            if (success)
             {
-                await Clients.Caller.SendAsync("JoinFailed", error);
+                await Clients.All.SendAsync("State", State.ToDto());
             }
-            await Clients.All.SendAsync("State", State.ToDto());
+
+            return new { success, message };
         }
 
         private async Task RunDealerSequence()
