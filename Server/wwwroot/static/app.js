@@ -310,9 +310,9 @@ function setControls(){
   betsBtn.textContent='Nowe zakłady'
 
   const resetBtn=document.getElementById('reset')
-  resetBtn.style.display= (isAdmin() && state.phase!=='PLAY') ? 'inline-block' : 'none'
+  resetBtn.style.display= isAdmin() ? 'inline-block' : 'none'
   resetBtn.disabled = false
-  resetBtn.textContent = 'Reset strony'
+  resetBtn.textContent = 'Reset Gry'
 
   document.querySelector('.chips-bar').classList.toggle('hidden', state.phase!=='BETTING')
   const chipBtns=[...document.querySelectorAll('.chip')]
@@ -342,6 +342,8 @@ async function start(){
   hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()
   hub.on('State',s=>{prevState=state;state=s;render()})
   hub.on('Welcome',(id)=>{ myConnectionId=id })
+  hub.on('ForceReload',()=>{ window.location.reload() })
+  hub.on('PromoteToAdmin', token => localStorage.setItem('bj_admin_token', token))
   hub.on('JoinFailed',msg=>{ try{ alert(msg) }catch(e){} })
   hub.onreconnecting(()=>{
     const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='Łączenie...'
@@ -356,6 +358,9 @@ async function start(){
   })
   try{
     await hub.start()
+    const token = localStorage.getItem('bj_admin_token')
+    if(token) await hub.invoke('ClaimAdmin', token)
+    
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=false
   }catch(e){
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=true

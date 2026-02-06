@@ -49,7 +49,7 @@ public class GameHub : Hub
         }
         bool ok;
         int assignedSeat;
-        string errorMsg;
+        string? errorMsg;
         lock (_lock)
         {
             (ok, assignedSeat, errorMsg) = State.AddPlayer(Context.ConnectionId, name);
@@ -59,7 +59,40 @@ public class GameHub : Hub
             await Clients.Caller.SendAsync("JoinFailed", errorMsg);
             return;
         }
+        
+        // If I am the admin (just assigned), send the token
+        string? tokenToSend = null;
+        lock (_lock)
+        {
+            if (State.AdminId == Context.ConnectionId && State.AdminToken != null)
+            {
+                tokenToSend = State.AdminToken;
+            }
+        }
+        if (tokenToSend != null)
+        {
+            await Clients.Caller.SendAsync("PromoteToAdmin", tokenToSend);
+        }
+
         await Clients.All.SendAsync("State", State.ToDto());
+    }
+
+    public async Task ClaimAdmin(string token)
+    {
+        bool success = false;
+        lock (_lock)
+        {
+            if (State.AdminToken == token)
+            {
+                State.AdminId = Context.ConnectionId;
+                success = true;
+            }
+        }
+        if (success)
+        {
+            await Clients.Caller.SendAsync("PromoteToAdmin", token); // Refresh token just in case
+            await Clients.All.SendAsync("State", State.ToDto());
+        }
     }
 
     public async Task Kick(int seat)
@@ -93,6 +126,13 @@ public class GameHub : Hub
                 State.NewBets();
             }
             await Clients.All.SendAsync("State", State.ToDto());
+        }
+
+        public async Task ResetGame()
+        {
+            // Deprecated logic to avoid full server reset.
+            // Client should handle reload. 
+            // We can just log it or ignore.
         }
 
         public async Task Hit()
@@ -147,91 +187,90 @@ public class GameHub : Hub
 
         public async Task Split()
         {
+            string? error = null;
             lock (_lock)
             {
                 if (!State.TryGetSeat(Context.ConnectionId, out var seat)) return;
-                State.Split(seat);
+                var (ok, msg) = State.Split(seat);
+                if (!ok) error = msg;
+            }
+            if (error != null)
+            {
+                await Clients.Caller.SendAsync("JoinFailed", error);
             }
             await Clients.All.SendAsync("State", State.ToDto());
         }
 
         private async Task RunDealerSequence()
         {
-            // Initial check and flag setting
+            bool skipLoop = false;
             lock (_lock)
             {
                 if (State.Phase != "PLAY") return;
                 if (State.DealerActing) return;
                 State.DealerActing = true;
-                State.GameLog.Add("--- Tura Krupiera ---");
+                
+                var anyLive = State.Players.Any(p => {
+                    if (p.Hand1 != null || p.Hand2 != null) {
+                        return (p.Hand1 != null && State.Score(p.Hand1) <= 21) || 
+                               (p.Hand2 != null && State.Score(p.Hand2) <= 21);
+                    }
+                    return State.Score(p.Hand) <= 21;
+                });
+                
+                if (!anyLive) {
+                    skipLoop = true;
+                    State.GameLog.Add("Wszyscy spalili - koniec rundy.");
+                } else {
+                    State.GameLog.Add("--- Tura Krupiera ---");
+                }
             }
             
-            await Task.Delay(50);
+            if (!skipLoop) await Task.Delay(50);
             await _hubContext.Clients.All.SendAsync("State", State.ToDto());
 
             try
             {
-                // Dealer Turn Loop
-                while (true)
+                if (!skipLoop)
                 {
-                    await Task.Delay(1000); // Animation delay
-                    
-                    bool shouldStay = false;
-                    lock (_lock)
+                    while (true)
                     {
-                        // Double check phase hasn't changed abruptly
-                        if (State.Phase != "PLAY") return;
-
-                        var score = State.Score(State.Dealer);
-                        if (score >= 17)
+                        await Task.Delay(1000); 
+                        bool shouldStay = false;
+                        lock (_lock)
                         {
-                            shouldStay = true;
-                            State.GameLog.Add($"Krupier pasuje: {score}");
+                            if (State.Phase != "PLAY") return;
+                            var score = State.Score(State.Dealer);
+                            if (score >= 17) {
+                                shouldStay = true;
+                                State.GameLog.Add($"Krupier pasuje: {score}");
+                            } else {
+                                var card = State.Deal();
+                                State.Dealer.Add(card);
+                                var newScore = State.Score(State.Dealer);
+                                State.GameLog.Add($"Krupier dobiera: {card.r}{card.s} (Razem: {newScore})");
+                            }
                         }
-                        else
-                        {
-                            var card = State.Deal();
-                            State.Dealer.Add(card);
-                            var newScore = State.Score(State.Dealer);
-                            State.GameLog.Add($"Krupier dobiera: {card.r}{card.s} (Razem: {newScore})");
-                        }
+                        await _hubContext.Clients.All.SendAsync("State", State.ToDto());
+                        if (shouldStay) break;
                     }
-                    
-                    // Broadcast update after each card/decision
-                    await _hubContext.Clients.All.SendAsync("State", State.ToDto());
-                    
-                    if (shouldStay) break;
                 }
 
-                // Settlement Phase
                 lock (_lock)
                 {
                     State.Finished = true;
                     State.Phase = "SETTLEMENT";
                     State.GameLog.Add("--- Rozliczanie ---");
-                    try
-                    {
-                        State.Settle();
-                    }
-                    catch (Exception ex)
-                    {
-                        State.GameLog.Add($"BŁĄD KRYTYCZNY ROZLICZANIA: {ex.Message}");
-                        foreach(var p in State.Players)
-                        {
-                            if (string.IsNullOrEmpty(p.WinReason)) p.WinReason = "Błąd systemu";
-                        }
+                    try { State.Settle(); }
+                    catch (Exception ex) {
+                        State.GameLog.Add($"BŁĄD: {ex.Message}");
                     }
                 }
-                
-                // Final update
                 await _hubContext.Clients.All.SendAsync("State", State.ToDto());
             }
             finally
             {
-                lock (_lock)
-                {
-                    State.DealerActing = false;
-                }
+                lock (_lock) { State.DealerActing = false; }
             }
         }
 
@@ -283,6 +322,7 @@ public class GameHub : Hub
         public bool DealerActing { get; set; }
         public string Phase { get; set; } = "BETTING";
         public List<string> GameLog { get; set; } = new List<string>();
+        public string? AdminToken { get; set; }
         
         public GameState()
         {
@@ -307,7 +347,13 @@ public class GameHub : Hub
                 var p = new Player{ Id=id, Name=nm, Seat=seat, Money=1000 };
                 Players.Add(p);
                 ConnectionSeat[id] = seat;
-                if (AdminId == null) AdminId = id;
+                
+                // Only assign Admin if no token exists (fresh game)
+                if (AdminId == null && AdminToken == null) 
+                {
+                    AdminId = id;
+                    AdminToken = Guid.NewGuid().ToString();
+                }
                 return (true,seat,null);
             }
             return (false,-1, "Brak wolnych miejsc");
@@ -322,7 +368,8 @@ public class GameHub : Hub
                 ConnectionSeat.Remove(p.Id);
                 if (AdminId == p.Id)
                 {
-                    AdminId = Players.OrderBy(x=>x.Seat).FirstOrDefault()?.Id;
+                    // Do not auto-assign to next player. Keep it vacant for reclaim.
+                    AdminId = null;
                 }
             }
             if (ActiveSeat==seat)
@@ -364,13 +411,44 @@ public class GameHub : Hub
         public void Hit(int seat)
         {
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
-            if (p==null || p.Finished || p.Hand.Count == 0) return;
+            if (p==null || p.Finished) return;
+            
+            // Safety check
+            if (p.Hand == null) return;
+
             p.Hand.Add(Deal());
             var sc = Score(p.Hand);
-            if (sc>21){
-                if (p.Hand2!=null && !p.Finished2 && p.Hand==p.Hand1){ p.Finished1=true; p.Hand=p.Hand2; p.Stood=false; p.Finished=false; return; }
-                if (p.Hand2!=null && !p.Finished1 && p.Hand==p.Hand2){ p.Finished2=true; p.Stood=true; p.Finished=true; AdvanceActive(); return; }
-                p.Finished=true; p.Stood=true; AdvanceActive();
+            
+            if (sc > 21)
+            {
+                // Handle Bust
+                if (p.Hand2 != null) // Split Mode
+                {
+                    if (p.Hand == p.Hand1)
+                    {
+                        // Hand 1 busted -> Move to Hand 2
+                        GameLog.Add($"{p.Name} (Ręka 1): Fura ({sc})");
+                        p.Finished1 = true;
+                        p.Hand = p.Hand2;
+                    }
+                    else
+                    {
+                        // Hand 2 busted -> Finish
+                        GameLog.Add($"{p.Name} (Ręka 2): Fura ({sc})");
+                        p.Finished2 = true;
+                        p.Finished = true;
+                        p.Stood = true;
+                        AdvanceActive();
+                    }
+                }
+                else
+                {
+                    // Normal Mode
+                    GameLog.Add($"{p.Name}: Fura ({sc})");
+                    p.Finished = true;
+                    p.Stood = true;
+                    AdvanceActive();
+                }
             }
         }
 
@@ -378,9 +456,37 @@ public class GameHub : Hub
         {
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
             if (p==null || p.Finished) return;
-            if (p.Hand2!=null && p.Hand==p.Hand1 && !p.Finished2){ p.Finished1=true; p.Hand=p.Hand2; p.Stood=false; p.Finished=false; return; }
-            if (p.Hand2!=null && p.Hand==p.Hand2){ p.Finished2=true; }
-            p.Stood=true; p.Finished=true; AdvanceActive();
+
+            if (p.Hand2 != null) // Split Mode
+            {
+                if (p.Hand == p.Hand1)
+                {
+                    // Stand on Hand 1 -> Move to Hand 2
+                    var sc = Score(p.Hand1);
+                    GameLog.Add($"{p.Name} (Ręka 1): Pas ({sc})");
+                    p.Finished1 = true;
+                    p.Hand = p.Hand2;
+                }
+                else
+                {
+                    // Stand on Hand 2 -> Finish
+                    var sc = Score(p.Hand2);
+                    GameLog.Add($"{p.Name} (Ręka 2): Pas ({sc})");
+                    p.Finished2 = true;
+                    p.Finished = true;
+                    p.Stood = true;
+                    AdvanceActive();
+                }
+            }
+            else
+            {
+                // Normal Mode
+                var sc = Score(p.Hand);
+                GameLog.Add($"{p.Name}: Pas ({sc})");
+                p.Finished = true;
+                p.Stood = true;
+                AdvanceActive();
+            }
         }
 
         private void AdvanceActive()
@@ -519,40 +625,58 @@ public class GameHub : Hub
             }
             p.Bet = p.Bet1 + p.Bet2;
         }
-        public void Split(int seat)
+        public (bool, string) Split(int seat)
         {
-            if (Phase != "PLAY") { State.GameLog.Add("Błąd Split: zła faza"); return; }
+            if (Phase != "PLAY") return (false, "Błąd Split: zła faza");
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
-            if (p==null || p.Finished) { State.GameLog.Add("Błąd Split: gracz skończył lub null"); return; }
-            if (ActiveSeat != seat) { State.GameLog.Add("Błąd Split: nie twoja tura"); return; }
-            if (p.Hand.Count != 2) { State.GameLog.Add($"Błąd Split: liczba kart {p.Hand.Count}"); return; }
+            if (p==null) return (false, "Błąd Split: gracz nieznany");
+            if (p.Finished) return (false, "Błąd Split: tura zakończona");
+            if (ActiveSeat != seat) return (false, "Błąd Split: nie twoja kolej");
             
-            bool canPair = p.Hand[0].r==p.Hand[1].r || (ValueOf(p.Hand[0])==10 && ValueOf(p.Hand[1])==10);
-            if (!canPair) { State.GameLog.Add("Błąd Split: brak pary"); return; }
+            if (p.Hand == null || p.Hand.Count != 2) return (false, "Błąd Split: wymagane 2 karty");
+            if (p.Hand1 != null || p.Hand2 != null) return (false, "Błąd Split: już rozdzielono");
+
+            var c1 = p.Hand[0];
+            var c2 = p.Hand[1];
+            bool isPair = (c1.r == c2.r) || (ValueOf(c1) == 10 && ValueOf(c2) == 10);
+            if (!isPair) return (false, "Błąd Split: karty nie są parą");
             
             var baseBet = (p.Bet1>0)?p.Bet1:p.Bet;
             var extraCap = Math.Max(0, 2000 - (p.Bet1+p.Bet2));
             var extra = Math.Min(baseBet, Math.Min(extraCap, p.Money));
             
             if (extra < baseBet) { 
-                State.GameLog.Add($"Błąd Split: za mało środków (Potrzebne: {baseBet}, Masz: {p.Money})"); 
-                return; 
+                return (false, $"Błąd Split: brak środków ({p.Money} < {baseBet})"); 
             }
-            if (extra<=0) return;
+            if (extra<=0) return (false, "Błąd Split: nieprawidłowa stawka");
+            
+            GameLog.Add($"{p.Name} rozdziela karty!");
             
             p.Money -= extra;
-            p.Bet1 = baseBet; // Ensure Bet1 is set
-            p.Bet2 += extra;
             
-            State.GameLog.Add($"{p.Name} rozdziela karty!");
+            // Create separate hands
+            p.Hand1 = new List<Card>{ c1 };
+            p.Hand2 = new List<Card>{ c2 };
             
-            p.Hand1 = new List<Card>{ p.Hand[0] };
-            p.Hand2 = new List<Card>{ p.Hand[1] };
-            p.Hand = p.Hand1;
+            // Deal second card to each
             p.Hand1.Add(Deal());
             p.Hand2.Add(Deal());
-            p.Finished=false; p.Stood=false; p.Finished1=false; p.Finished2=false;
+            
+            // Set bets
+            p.Bet1 = baseBet;
+            p.Bet2 = extra;
             p.Bet = p.Bet1 + p.Bet2;
+            
+            // Reset state
+            p.Finished=false; 
+            p.Stood=false; 
+            p.Finished1=false; 
+            p.Finished2=false;
+            
+            // Set Active Hand to Hand1
+            p.Hand = p.Hand1;
+            
+            return (true, "OK");
         }
         public void Settle()
         {
