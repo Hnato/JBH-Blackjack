@@ -1,3 +1,0 @@
-D:\Projekt black jack\Final\BlackJackBJH.pdb
-D:\Projekt black jack\Final\aspnetcorev2_inprocess.dll
-D:\Projekt black jack\Final\BlackJackBJH.exe

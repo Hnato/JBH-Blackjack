@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationIcon>BJH.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <Target Name="CopyExeToRoot" AfterTargets="Publish">
+    <Exec Command="copy /Y &quot;$(PublishDir)$(TargetName).exe&quot; &quot;$(ProjectDir)..\$(TargetName).exe&quot;" />
+  </Target>
+
+</Project>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlackJack BJH</title>
+  <link rel="icon" href="/BJH.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><img src="/BJH.png" alt="BJH" class="brand-logo"/>BlackJack BJH</div>
+    <div class="hud">
+      <span>Faza: <strong id="phase">Łączenie...</strong></span>
+      <div class="join">
+        <input id="name" placeholder="Twoje imię" maxlength="10" />
+        <button id="join">Dołącz</button>
+      </div>
+    </div>
+    <div id="balanceWrap" class="balance">Balans: <strong id="balance">-</strong></div>
+  </header>
+
+  <main class="table-area">
+    <div class="oval"></div>
+    <div id="dealer" class="dealer-box"></div>
+    <div class="seats" id="seats"></div>
+    <div id="burst" class="burst-banner">BURST</div>
+    <div id="result" class="modal hidden">
+      <div class="modal-card">
+        <div id="result-title" class="modal-title"></div>
+        <div id="result-sub" class="modal-sub"></div>
+        <div id="result-log" class="modal-log"></div>
+        <button id="result-close" class="btn">OK</button>
+      </div>
+    </div>
+  </main>
+
+  <section class="controls">
+    <div class="chips-bar">
+      <button class="chip chip-1" data-amt="1">1</button>
+      <button class="chip chip-5" data-amt="5">5</button>
+      <button class="chip chip-10" data-amt="10">10</button>
+      <button class="chip chip-25" data-amt="25">25</button>
+      <button class="chip chip-100" data-amt="100">100</button>
+      <button class="chip chip-500" data-amt="500">500</button>
+    </div>
+    <div class="actions">
+      <button id="start">Rozpocznij rozdanie</button>
+      <button id="hit" class="play">Hit</button>
+      <button id="stand" class="play">Stand</button>
+      <button id="double" class="play">Double</button>
+      <button id="split" class="play">Split</button>
+      <button id="bets">Nowe zakłady</button>
+      <button id="reset">Reset strony</button>
+    </div>
+  </section>
+
+  <footer class="footer">DEV Hnato</footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
