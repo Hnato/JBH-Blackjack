@@ -44,8 +44,19 @@ function spreadArc(start,end,n){ const step=(end-start)/(n-1); return Array.from
 
 function render(){
   const connected = hub && hub.state===signalR.HubConnectionState.Connected
-  document.getElementById('phase').textContent= connected ? (state.phase||'BETTING') : 'OFFLINE'
+  const phaseMap = {'BETTING':'Zakłady', 'PLAY':'Gra', 'SETTLEMENT':'Koniec'}
+  document.getElementById('phase').textContent= connected ? (phaseMap[state.phase] || state.phase || 'Zakłady') : 'OFFLINE'
   if(state.phase==='SETTLEMENT'){ ui.stood=false }
+
+  const myId = myConnectionId || (hub && hub.connectionId) || state.hostId || state.adminId
+  const me = state.players.find(p=>p.id===myId)
+
+  // Turn Notification
+  const notify = document.getElementById('turn-notify')
+  if(notify){
+      const isMyTurn = me && state.phase==='PLAY' && state.activeSeat===me.seat && !ui.stood
+      notify.style.display = isMyTurn ? 'block' : 'none'
+  }
 
   const seatsEl=document.getElementById('seats');seatsEl.innerHTML=''
   const dealerEl=document.getElementById('dealer');dealerEl.innerHTML=''
@@ -87,6 +98,7 @@ function render(){
     const p=present[idx]
     const left = startX + idx*(seatWidth+gap)
     const seat=document.createElement('div');seat.className='seat'
+    if(me && p.seat===me.seat) seat.classList.add('is-me')
     seat.style.left=`${left}px`
     seat.style.top = `${targetTop}px`
     const name=document.createElement('div');name.className='name'
@@ -148,20 +160,12 @@ function render(){
   setControls()
   
   const balEl=document.getElementById('balance')
-  const myId=myConnectionId || (hub && hub.connectionId) || state.hostId || state.adminId
-  const me=state.players.find(p=>p.id===myId)
   if(balEl){ balEl.textContent = me? String(me.money) : '-' }
-  renderBurst()
+  // renderBurst() - Removed as requested
   renderResult()
 }
 
-function renderBurst(){
-  const banner=document.getElementById('burst')
-  const meId=myConnectionId || (hub && hub.connectionId)
-  const me=state.players.find(p=>p.id===meId)
-  const bust=me && me.finished && (me.score!=null?me.score:score(me.hand))>21
-  banner.style.display=bust?'block':'none'
-}
+// function renderBurst(){ ... } - Removed as requested
 
 let cachedResult = null
 

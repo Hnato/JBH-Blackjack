@@ -185,6 +185,7 @@ public class GameHub : Hub
         {
             bool success = false;
             string message = "";
+            bool triggerDealer = false;
 
             lock (_lock)
             {
@@ -195,12 +196,15 @@ public class GameHub : Hub
                     return new { success=false, message="Błąd: Nieprawidłowe miejsce" };
 
                 (success, message) = State.Split(seat);
+                triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
             }
 
             if (success)
             {
                 await Clients.All.SendAsync("State", State.ToDto());
             }
+
+            if (triggerDealer) _ = RunDealerSequence();
 
             return new { success, message };
         }
@@ -433,7 +437,16 @@ public class GameHub : Hub
                         // Hand 1 busted -> Move to Hand 2
                         GameLog.Add($"{p.Name} (Ręka 1): Fura ({sc})");
                         p.Finished1 = true;
-                        p.Hand = p.Hand2;
+                        if (p.Finished2)
+                        {
+                            p.Finished = true;
+                            p.Stood = true;
+                            AdvanceActive();
+                        }
+                        else
+                        {
+                            p.Hand = p.Hand2;
+                        }
                     }
                     else
                     {
@@ -469,7 +482,16 @@ public class GameHub : Hub
                     var sc = Score(p.Hand1);
                     GameLog.Add($"{p.Name} (Ręka 1): Pas ({sc})");
                     p.Finished1 = true;
-                    p.Hand = p.Hand2;
+                    if (p.Finished2)
+                    {
+                        p.Finished = true;
+                        p.Stood = true;
+                        AdvanceActive();
+                    }
+                    else
+                    {
+                        p.Hand = p.Hand2;
+                    }
                 }
                 else
                 {
@@ -679,6 +701,29 @@ public class GameHub : Hub
             
             // Set Active Hand to Hand1
             p.Hand = p.Hand1;
+
+            // Check for instant Blackjack on split hands
+            bool bj1 = IsBlackjack(p.Hand1);
+            bool bj2 = IsBlackjack(p.Hand2);
+
+            if (bj1)
+            {
+                p.Finished1 = true;
+                GameLog.Add($"{p.Name} (Ręka 1): Blackjack!");
+                p.Hand = p.Hand2;
+            }
+            if (bj2)
+            {
+                p.Finished2 = true;
+                GameLog.Add($"{p.Name} (Ręka 2): Blackjack!");
+            }
+
+            if (p.Finished1 && p.Finished2)
+            {
+                p.Finished = true;
+                p.Stood = true;
+                AdvanceActive();
+            }
             
             return (true, "OK");
         }

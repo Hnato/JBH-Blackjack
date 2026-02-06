@@ -1,0 +1,4 @@
+C:\Users\user\Music\BJH\JBH v2\Server\publish\appsettings.Development.json
+C:\Users\user\Music\BJH\JBH v2\Server\publish\appsettings.json
+C:\Users\user\Music\BJH\JBH v2\Server\publish\BlackJackServer.pdb
+C:\Users\user\Music\BJH\JBH v2\Server\publish\BlackJackServer.exe

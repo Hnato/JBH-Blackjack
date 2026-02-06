@@ -350,3 +350,7 @@ C:\Users\user\Music\BJH\JBH v2\Server\obj\Release\net8.0\win-x64\refint\BlackJac
 C:\Users\user\Music\BJH\JBH v2\Server\obj\Release\net8.0\win-x64\BlackJackServer.pdb
 C:\Users\user\Music\BJH\JBH v2\Server\obj\Release\net8.0\win-x64\BlackJackServer.genruntimeconfig.cache
 C:\Users\user\Music\BJH\JBH v2\Server\obj\Release\net8.0\win-x64\ref\BlackJackServer.dll
+C:\Users\user\Music\BJH\JBH v2\Server\bin\Release\net8.0\win-x64\publish\appsettings.Development.json
+C:\Users\user\Music\BJH\JBH v2\Server\bin\Release\net8.0\win-x64\publish\appsettings.json
+C:\Users\user\Music\BJH\JBH v2\Server\bin\Release\net8.0\win-x64\publish\web.config
+C:\Users\user\Music\BJH\JBH v2\Server\bin\Release\net8.0\win-x64\publish\BlackJackServer.staticwebassets.endpoints.json
