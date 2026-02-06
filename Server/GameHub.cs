@@ -8,6 +8,12 @@ public class GameHub : Hub
     private static readonly string[] Ranks = new[] { "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K" };
 
     private static GameState State = new GameState();
+    private readonly IHubContext<GameHub> _hubContext;
+
+    public GameHub(IHubContext<GameHub> hubContext)
+    {
+        _hubContext = hubContext;
+    }
 
     public override async Task OnConnectedAsync()
     {
@@ -43,15 +49,14 @@ public class GameHub : Hub
         }
         bool ok;
         int assignedSeat;
+        string errorMsg;
         lock (_lock)
         {
-            (ok, assignedSeat) = State.AddPlayer(Context.ConnectionId, name);
+            (ok, assignedSeat, errorMsg) = State.AddPlayer(Context.ConnectionId, name);
         }
         if (!ok)
         {
-            var dup = false;
-            lock(_lock){ dup = State.ConnectionSeat.ContainsKey(Context.ConnectionId); }
-            await Clients.Caller.SendAsync("JoinFailed", dup?"Już jesteś w grze":"Brak wolnych miejsc");
+            await Clients.Caller.SendAsync("JoinFailed", errorMsg);
             return;
         }
         await Clients.All.SendAsync("State", State.ToDto());
@@ -77,7 +82,7 @@ public class GameHub : Hub
                 triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
             }
             await Clients.All.SendAsync("State", State.ToDto());
-            if (triggerDealer) await RunDealerSequence();
+            if (triggerDealer) _ = RunDealerSequence();
         }
 
         public async Task NewBets()
@@ -100,7 +105,7 @@ public class GameHub : Hub
                 triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
             }
             await Clients.All.SendAsync("State", State.ToDto());
-            if (triggerDealer) await RunDealerSequence();
+            if (triggerDealer) _ = RunDealerSequence();
         }
 
         public async Task Stand()
@@ -113,7 +118,7 @@ public class GameHub : Hub
                 triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
             }
             await Clients.All.SendAsync("State", State.ToDto());
-            if (triggerDealer) await RunDealerSequence();
+            if (triggerDealer) _ = RunDealerSequence();
         }
 
         public async Task PlaceBet(int amount)
@@ -137,7 +142,7 @@ public class GameHub : Hub
                 triggerDealer = (State.ActiveSeat == null && State.Phase == "PLAY");
             }
             await Clients.All.SendAsync("State", State.ToDto());
-            if (triggerDealer) await RunDealerSequence();
+            if (triggerDealer) _ = RunDealerSequence();
         }
 
         public async Task Split()
@@ -160,6 +165,9 @@ public class GameHub : Hub
                 State.DealerActing = true;
                 State.GameLog.Add("--- Tura Krupiera ---");
             }
+            
+            await Task.Delay(50);
+            await _hubContext.Clients.All.SendAsync("State", State.ToDto());
 
             try
             {
@@ -190,7 +198,7 @@ public class GameHub : Hub
                     }
                     
                     // Broadcast update after each card/decision
-                    await Clients.All.SendAsync("State", State.ToDto());
+                    await _hubContext.Clients.All.SendAsync("State", State.ToDto());
                     
                     if (shouldStay) break;
                 }
@@ -216,7 +224,7 @@ public class GameHub : Hub
                 }
                 
                 // Final update
-                await Clients.All.SendAsync("State", State.ToDto());
+                await _hubContext.Clients.All.SendAsync("State", State.ToDto());
             }
             finally
             {
@@ -232,8 +240,7 @@ public class GameHub : Hub
         var http = ctx.GetHttpContext();
         var ip = http?.Connection.RemoteIpAddress;
         if (ip != null && (System.Net.IPAddress.IsLoopback(ip))) return true;
-        if (State.HostId == ctx.ConnectionId) return true;
-        if (State.AdminId == ctx.ConnectionId) return true;
+        if (State.AdminId != null) return State.AdminId == ctx.ConnectionId;
         return false;
     }
 
@@ -281,23 +288,29 @@ public class GameHub : Hub
         {
         }
 
-        public (bool,int) AddPlayer(string id, string name)
+        public (bool,int,string?) AddPlayer(string id, string name)
         {
             if (ConnectionSeat.ContainsKey(id))
             {
-                return (false, -1);
+                return (false, -1, "Już jesteś w grze");
             }
+            var nm = (name??"").Trim(); if (nm.Length>10) nm = nm.Substring(0,10);
+            
+            if (Players.Any(p => p.Name.Equals(nm, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                return (false, -1, "Nick jest zajęty");
+            }
+
             for(int seat=0; seat<5; seat++)
             {
                 if (Players.Any(p=>p.Seat==seat)) continue;
-                var nm = (name??"").Trim(); if (nm.Length>10) nm = nm.Substring(0,10);
                 var p = new Player{ Id=id, Name=nm, Seat=seat, Money=1000 };
                 Players.Add(p);
                 ConnectionSeat[id] = seat;
                 if (AdminId == null) AdminId = id;
-                return (true,seat);
+                return (true,seat,null);
             }
-            return (false,-1);
+            return (false,-1, "Brak wolnych miejsc");
         }
 
         public void RemoveSeat(int seat)
@@ -438,6 +451,7 @@ public class GameHub : Hub
                 }),
                 activeSeat = ActiveSeat,
                 finished = Finished,
+                dealerActing = DealerActing,
                 phase = Phase,
                 dealerScore = Score(Dealer),
                 deck = 9999,
@@ -507,19 +521,31 @@ public class GameHub : Hub
         }
         public void Split(int seat)
         {
-            if (Phase != "PLAY") return;
+            if (Phase != "PLAY") { State.GameLog.Add("Błąd Split: zła faza"); return; }
             var p = Players.FirstOrDefault(x=>x.Seat==seat);
-            if (p==null || p.Finished) return;
-            if (ActiveSeat != seat) return;
-            if (p.Hand.Count != 2) return;
+            if (p==null || p.Finished) { State.GameLog.Add("Błąd Split: gracz skończył lub null"); return; }
+            if (ActiveSeat != seat) { State.GameLog.Add("Błąd Split: nie twoja tura"); return; }
+            if (p.Hand.Count != 2) { State.GameLog.Add($"Błąd Split: liczba kart {p.Hand.Count}"); return; }
+            
             bool canPair = p.Hand[0].r==p.Hand[1].r || (ValueOf(p.Hand[0])==10 && ValueOf(p.Hand[1])==10);
-            if (!canPair) return;
+            if (!canPair) { State.GameLog.Add("Błąd Split: brak pary"); return; }
+            
             var baseBet = (p.Bet1>0)?p.Bet1:p.Bet;
             var extraCap = Math.Max(0, 2000 - (p.Bet1+p.Bet2));
             var extra = Math.Min(baseBet, Math.Min(extraCap, p.Money));
+            
+            if (extra < baseBet) { 
+                State.GameLog.Add($"Błąd Split: za mało środków (Potrzebne: {baseBet}, Masz: {p.Money})"); 
+                return; 
+            }
             if (extra<=0) return;
+            
             p.Money -= extra;
+            p.Bet1 = baseBet; // Ensure Bet1 is set
             p.Bet2 += extra;
+            
+            State.GameLog.Add($"{p.Name} rozdziela karty!");
+            
             p.Hand1 = new List<Card>{ p.Hand[0] };
             p.Hand2 = new List<Card>{ p.Hand[1] };
             p.Hand = p.Hand1;

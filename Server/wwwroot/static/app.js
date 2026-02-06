@@ -57,7 +57,7 @@ function render(){
 
   const dealerCards=document.createElement('div');dealerCards.className='cards'
   const dealerScore=document.createElement('div');dealerScore.className='meta'
-  const dealerFaceDown=(state.phase==='PLAY' && !state.finished)
+  const dealerFaceDown=(state.phase==='PLAY' && !state.finished && !state.dealerActing)
   const prevDealerLen = prevState ? (prevState.dealer ? prevState.dealer.length : 0) : 0
   state.dealer.forEach((c,idx)=> {
     const animate = !prevState || idx>=prevDealerLen
@@ -276,13 +276,13 @@ function setControls(){
   if(state.phase!=='PLAY'){ ui.stood=false }
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
-  document.querySelectorAll('.play').forEach(b=>{b.style.display=(state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
+  document.querySelectorAll('.play').forEach(b=>{b.style.display=(!!me && state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
   const splitBtn=document.getElementById('split')
   if(splitBtn){
     const hasSplit = !!me && (me.hand1 || me.hand2)
     const meHand=me?me.hand:[]
-    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K')))
-    splitBtn.style.display = (state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
+    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K'))) && (me.money >= (me.bet||0))
+    splitBtn.style.display = (!!me && state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
     splitBtn.disabled = !canSplit
   }
   const doubleBtn=document.getElementById('double')

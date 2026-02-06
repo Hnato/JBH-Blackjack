@@ -1,11 +1,17 @@
 const MAX_SEATS=5
+
+if(typeof signalR === 'undefined'){
+  alert('CRITICAL ERROR: SignalR library not loaded. Check /static/signalr.min.js')
+}
+
 let hub
+let myConnectionId = null
 let state={phase:'BETTING',deck:0,dealer:[],players:[],activeSeat:null,finished:false,hostId:null,adminId:null}
 let prevState=null
 const ui={stood:false}
 
 function isAdmin(){
-  const myId = hub && hub.connectionId
+  const myId = myConnectionId || (hub && hub.connectionId)
   return !!myId && (state.adminId===myId || state.hostId===myId)
 }
 
@@ -51,7 +57,7 @@ function render(){
 
   const dealerCards=document.createElement('div');dealerCards.className='cards'
   const dealerScore=document.createElement('div');dealerScore.className='meta'
-  const dealerFaceDown=(state.phase==='PLAY' && !state.finished)
+  const dealerFaceDown=(state.phase==='PLAY' && !state.finished && !state.dealerActing)
   const prevDealerLen = prevState ? (prevState.dealer ? prevState.dealer.length : 0) : 0
   state.dealer.forEach((c,idx)=> {
     const animate = !prevState || idx>=prevDealerLen
@@ -132,7 +138,7 @@ function render(){
   setControls()
   
   const balEl=document.getElementById('balance')
-  const myId=(hub && hub.connectionId) || state.hostId || state.adminId
+  const myId=myConnectionId || (hub && hub.connectionId) || state.hostId || state.adminId
   const me=state.players.find(p=>p.id===myId)
   if(balEl){ balEl.textContent = me? String(me.money) : '-' }
   renderBurst()
@@ -141,7 +147,7 @@ function render(){
 
 function renderBurst(){
   const banner=document.getElementById('burst')
-  const meId=hub && hub.connectionId
+  const meId=myConnectionId || (hub && hub.connectionId)
   const me=state.players.find(p=>p.id===meId)
   const bust=me && me.finished && (me.score!=null?me.score:score(me.hand))>21
   banner.style.display=bust?'block':'none'
@@ -154,7 +160,7 @@ function renderResult(){
   const title=document.getElementById('result-title')
   const sub=document.getElementById('result-sub')
   const log=document.getElementById('result-log')
-  const meId=hub && hub.connectionId
+  const meId=myConnectionId || (hub && hub.connectionId)
   const me=state.players.find(p=>p.id===meId)
   
   if(state.phase!=='SETTLEMENT'){ 
@@ -220,16 +226,22 @@ function renderResult(){
       if(!detail) detail = 'Brak wygranej'
   }
 
-  title.textContent=`${outcome} • ${delta>0?'+':''}${delta}`
-  const stakeText = betBefore ? `Stawka: ${betBefore}` : ''
-  const pctText = betBefore ? `(${pct>0?'+':''}${pct}%)` : ''
-  const balText = `Balans: ${me.money}`
-  sub.textContent=`${detail} • ${stakeText} ${pctText} • ${balText}`
+  // Calculate actual profit/loss
+  let profit = 0
+  if (outcome === 'Wygrana') profit = delta - betBefore
+  else if (outcome === 'Przegrana') profit = -betBefore
+  else if (outcome === 'Remis') profit = 0
   
-  if(log && state.gameLog){
-    log.innerHTML = state.gameLog.map(l=>`<div>${l}</div>`).join('')
-    log.style.display = 'block'
-  }
+  // Format: "Przegrana -200 (Spaliłeś)" or "Wygrana +100 (Blackjack)"
+  const profitStr = profit > 0 ? `+${profit}` : `${profit}`
+  // Clean up detail - user wants "tiny reason"
+  const detailStr = detail ? ` <small style="font-size:0.6em; opacity:0.8">(${detail})</small>` : ''
+  
+  title.innerHTML = `${outcome} ${profitStr}${detailStr}`
+  
+  // Clear verbose sections
+  sub.textContent = ''
+  if(log) log.style.display = 'none'
   
   modal.classList.remove('hidden')
 }
@@ -256,7 +268,7 @@ function placeHand(hand, angleDeg, cx, cy, rx, ry, deckX, deckY, canvas){
 
 
 function setControls(){
-  const meId = hub.connection && hub.connection.connectionId
+  const meId = myConnectionId || (hub.connection && hub.connection.connectionId)
   if(!meId && hub && hub.connectionId){
   }
   const myId = meId || (hub && hub.connectionId)
@@ -264,13 +276,13 @@ function setControls(){
   if(state.phase!=='PLAY'){ ui.stood=false }
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
-  document.querySelectorAll('.play').forEach(b=>{b.style.display=(state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
+  document.querySelectorAll('.play').forEach(b=>{b.style.display=(!!me && state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
   const splitBtn=document.getElementById('split')
   if(splitBtn){
     const hasSplit = !!me && (me.hand1 || me.hand2)
     const meHand=me?me.hand:[]
-    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K')))
-    splitBtn.style.display = (state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
+    const canSplit = !!me && !hasSplit && state.phase==='PLAY' && state.activeSeat===me.seat && meHand && meHand.length===2 && ((meHand[0].r===meHand[1].r) || ((meHand[0].r==='10'||meHand[0].r==='J'||meHand[0].r==='Q'||meHand[0].r==='K') && (meHand[1].r==='10'||meHand[1].r==='J'||meHand[1].r==='Q'||meHand[1].r==='K'))) && (me.money >= (me.bet||0))
+    splitBtn.style.display = (!!me && state.phase==='PLAY' && !ui.stood && !hasSplit) ? 'inline-block' : 'none'
     splitBtn.disabled = !canSplit
   }
   const doubleBtn=document.getElementById('double')
@@ -329,7 +341,7 @@ document.getElementById('split').addEventListener('click',(e)=>{clickFX(e.target
 async function start(){
   hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()
   hub.on('State',s=>{prevState=state;state=s;render()})
-  hub.on('Welcome',()=>{  })
+  hub.on('Welcome',(id)=>{ myConnectionId=id })
   hub.on('JoinFailed',msg=>{ try{ alert(msg) }catch(e){} })
   hub.onreconnecting(()=>{
     const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='Łączenie...'
@@ -347,6 +359,8 @@ async function start(){
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=false
   }catch(e){
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=true
+    console.error(e)
+    alert('Błąd połączenia z serwerem: ' + e.toString())
   }
 }
 
