@@ -578,7 +578,21 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
   min-width: 280px;
   color: var(--text);
   box-shadow: 0 24px 40px rgba(0,0,0,.7);
+  position: relative;
 }
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 5px;
+}
+.modal-close:hover { color: #fff; }
 .modal-title {
   font-weight: 900;
   font-size: 20px;
@@ -611,3 +625,13 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
   .seat .chips-row{ width:72px; overflow:visible }
 }
 .seat .chips-row > div { position: absolute !important }
+
+.you-marker {
+  font-size: 1em;
+  opacity: 0.8;
+  margin-left: 4px;
+  color: var(--gold);
+  font-weight: 700;
+  text-transform: lowercase;
+  vertical-align: middle;
+}

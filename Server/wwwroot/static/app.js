@@ -104,6 +104,12 @@ function render(){
     const name=document.createElement('div');name.className='name'
     const nm=document.createElement('span');nm.textContent=(p.name||'').slice(0,10)
     name.appendChild(nm)
+    if(me && p.seat===me.seat){
+      const you=document.createElement('span');
+      you.textContent=' (ty)';
+      you.className='you-marker';
+      name.appendChild(you);
+    }
     const meta=document.createElement('div');meta.className='meta'
     if(p.hand1 || p.hand2){
       const s1 = p.score1!=null ? p.score1 : (p.hand1 ? score(p.hand1) : null)
@@ -292,6 +298,16 @@ function setControls(){
   // Logic Fix: Ensure ui.stood is reset when switching to the second hand in Split mode
   if(me && me.activeHand===2 && !me.finished2 && !me.finished){ ui.stood=false }
 
+  // Auto-hide controls on Bust (>21)
+  let currentScore = 0;
+  if(me && (me.hand1 || me.hand2)){
+      const h = me.activeHand===2 ? me.hand2 : me.hand1;
+      currentScore = h ? score(h) : 0;
+  } else if(me && me.hand){
+      currentScore = me.score!=null ? me.score : score(me.hand);
+  }
+  if(currentScore > 21) { ui.stood = true; }
+
   if(state.phase==='PLAY' && me && me.hand && me.hand.length===2 && (me.score!=null?me.score:score(me.hand))===21){ ui.stood=true }
   const canPlay=!!me && !ui.stood && state.activeSeat===me.seat && !state.finished && !me.finished && state.phase==='PLAY'
   document.querySelectorAll('.play').forEach(b=>{b.style.display=(!!me && state.phase==='PLAY' && !ui.stood)?'inline-block':'none';b.disabled=!canPlay})
@@ -383,7 +399,10 @@ document.getElementById('split').addEventListener('click',(e)=>{
   })
 
 async function start(){
-  hub=new signalR.HubConnectionBuilder().withUrl(window.location.origin+'/gamehub').withAutomaticReconnect().build()
+  hub=new signalR.HubConnectionBuilder()
+    .withUrl(window.location.origin+'/gamehub')
+    .withAutomaticReconnect([0, 2000, 5000, 10000, 10000, 20000, 30000, 60000])
+    .build()
   hub.on('State',s=>{prevState=state;state=s;render()})
   hub.on('Welcome',(id)=>{ myConnectionId=id })
   hub.on('ForceReload',()=>{ window.location.reload() })
@@ -397,8 +416,9 @@ async function start(){
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=false
   })
   hub.onclose(()=>{
-    const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='OFFLINE'
+    const phaseEl=document.getElementById('phase'); if(phaseEl) phaseEl.textContent='OFFLINE (Ponawianie...)'
     const joinBtn=document.getElementById('join'); if(joinBtn) joinBtn.disabled=true
+    setTimeout(start, 3000)
   })
   try{
     await hub.start()

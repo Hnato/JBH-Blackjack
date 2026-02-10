@@ -35,6 +35,19 @@ public class GameHub : Hub
                 State.RemoveSeat(seat);
             }
             if (State.HostId == Context.ConnectionId) State.HostId = null;
+
+            // Reset game if no players left
+            if (State.Players.Count == 0)
+            {
+                State.Dealer.Clear();
+                State.Phase = "BETTING";
+                State.Finished = false;
+                State.DealerActing = false;
+                State.GameLog.Clear();
+                State.ActiveSeat = null;
+                State.AdminId = null;
+                State.AdminToken = null;
+            }
         }
         await Clients.All.SendAsync("State", State.ToDto());
         await base.OnDisconnectedAsync(exception);
@@ -273,8 +286,25 @@ public class GameHub : Hub
                     catch (Exception ex) {
                         State.GameLog.Add($"BŁĄD: {ex.Message}");
                     }
+                    State.GameLog.Add("Nowa runda za 10 sekund...");
+            }
+            await _hubContext.Clients.All.SendAsync("State", State.ToDto());
+
+            await Task.Delay(10000);
+
+            bool restarted = false;
+                lock (_lock)
+                {
+                    if (State.Phase == "SETTLEMENT")
+                    {
+                        State.NewBets();
+                        restarted = true;
+                    }
                 }
-                await _hubContext.Clients.All.SendAsync("State", State.ToDto());
+                if (restarted)
+                {
+                    await _hubContext.Clients.All.SendAsync("State", State.ToDto());
+                }
             }
             finally
             {

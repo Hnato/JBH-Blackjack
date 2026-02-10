@@ -13,7 +13,12 @@ var options = new WebApplicationOptions
 };
 
 var builder = WebApplication.CreateBuilder(options);
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(hubOptions =>
+{
+    hubOptions.EnableDetailedErrors = true;
+    hubOptions.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    hubOptions.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>

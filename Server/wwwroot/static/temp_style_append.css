@@ -1,0 +1,10 @@
+
+.you-marker {
+  font-size: 0.75em;
+  opacity: 0.6;
+  margin-left: 4px;
+  color: var(--gold);
+  font-weight: 400;
+  text-transform: lowercase;
+  vertical-align: middle;
+}
