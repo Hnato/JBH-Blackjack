@@ -406,7 +406,6 @@ public class GameHub : Hub
                 ConnectionSeat.Remove(p.Id);
                 if (AdminId == p.Id)
                 {
-                    // Do not auto-assign to next player. Keep it vacant for reclaim.
                     AdminId = null;
                 }
             }
@@ -414,6 +413,18 @@ public class GameHub : Hub
             {
                 ActiveSeat=null;
                 if (Phase=="PLAY") AdvanceActive();
+            }
+
+            if (Players.Count == 0)
+            {
+                Dealer.Clear();
+                Phase = "BETTING";
+                Finished = false;
+                DealerActing = false;
+                GameLog.Clear();
+                ActiveSeat = null;
+                AdminId = null;
+                AdminToken = null;
             }
         }
 

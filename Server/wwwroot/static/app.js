@@ -103,13 +103,13 @@ function render(){
     seat.style.top = `${targetTop}px`
     const name=document.createElement('div');name.className='name'
     const nm=document.createElement('span');nm.textContent=(p.name||'').slice(0,10)
-    name.appendChild(nm)
     if(me && p.seat===me.seat){
       const you=document.createElement('span');
-      you.textContent=' (ty)';
+      you.textContent='(ty)';
       you.className='you-marker';
-      name.appendChild(you);
+      nm.appendChild(you);
     }
+    name.appendChild(nm)
     const meta=document.createElement('div');meta.className='meta'
     if(p.hand1 || p.hand2){
       const s1 = p.score1!=null ? p.score1 : (p.hand1 ? score(p.hand1) : null)

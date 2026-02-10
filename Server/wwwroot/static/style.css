@@ -582,17 +582,27 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
 }
 .modal-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 15px;
+  left: 15px;
+  right: auto;
   background: transparent;
   border: none;
   color: #888;
-  font-size: 24px;
+  font-size: 32px;
   cursor: pointer;
-  line-height: 1;
-  padding: 0 5px;
+  line-height: 0.8;
+  padding: 0;
+  z-index: 100;
+  width: auto;
+  height: auto;
+  transition: color 0.2s;
 }
-.modal-close:hover { color: #fff; }
+.modal-close:hover {
+  background: transparent;
+  color: #fff;
+  transform: none;
+  border: none;
+}
 .modal-title {
   font-weight: 900;
   font-size: 20px;
