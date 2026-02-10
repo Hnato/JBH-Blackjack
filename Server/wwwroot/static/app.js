@@ -62,8 +62,17 @@ function render(){
   const dealerEl=document.getElementById('dealer');dealerEl.innerHTML=''
 
   const table=document.querySelector('.table-area')
-  const rect=table.getBoundingClientRect()
-  const cx=rect.width/2, cy=rect.height/2
+  // Use offset properties to be immune to CSS transforms/scaling
+  const oval=document.querySelector('.oval')
+  
+  // Calculate relative to table-area (which is the offsetParent)
+  const ovalLeft = oval.offsetLeft
+  const ovalWidth = oval.offsetWidth
+  const ovalBottomY = oval.offsetTop + oval.offsetHeight
+  
+  // Center point for card dealing animation
+  const cx = ovalLeft + ovalWidth/2
+  const cy = oval.offsetTop + oval.offsetHeight/2
   const rx=cx-160, ry=cy-110
 
   const dealerCards=document.createElement('div');dealerCards.className='cards'
@@ -84,14 +93,11 @@ function render(){
   const isMobile = window.innerWidth<=640
   const seatWidth = isMobile ? 140 : 240
   const gap = isMobile ? 16 : 24
-  const ovalRect=document.querySelector('.oval').getBoundingClientRect()
-  const tableRect=rect
-  const ovalLeft = ovalRect.left - tableRect.left
-  const ovalWidth = ovalRect.width
+  
+  // Previously calculated ovalLeft, ovalWidth, ovalBottomY at top of render()
   const totalWidth = n>0 ? (n*seatWidth + (n-1)*gap) : 0
   const startX = ovalLeft + (ovalWidth - totalWidth)/2
   const seatHConst = 120
-  const ovalBottomY = ovalRect.bottom - tableRect.top
   const targetTop = Math.max(0, ovalBottomY - seatHConst/2 - 10)
 
   for(let idx=0; idx<n; idx++){
@@ -445,10 +451,6 @@ document.getElementById('join').addEventListener('click',async()=>{
   }
 })
 
-document.getElementById('result-close').addEventListener('click',()=>{
-  document.getElementById('result').classList.add('hidden')
-})
-
 document.getElementById('reset').addEventListener('click',()=>{ window.location.reload() })
 function addChips(container, amount){
   const denoms=[500,100,25,10,5,1]
@@ -476,3 +478,9 @@ function addChips(container, amount){
   }
   container.style.height=chipSize+'px'
 }
+
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(render, 100);
+});

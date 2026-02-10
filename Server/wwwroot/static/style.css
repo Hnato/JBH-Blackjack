@@ -338,8 +338,61 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
   100% { transform: translate(-50%, -50%) scale(1); }
 }
 
+/* --- Responsive Scaling for Small Desktop / Table View --- */
+
+/* Base scaling for smaller desktops (e.g. 1000px - 1200px) */
+@media (min-width: 641px) and (max-width: 1200px) {
+  .table-area { 
+    transform: scale(0.9); 
+    width: 111%; 
+    margin-left: -5.5%; 
+    transform-origin: top center; 
+    margin-bottom: -50px; 
+  }
+}
+
+/* 1000x700 specific tweaks (Tablet Landscape / Netbook) */
+@media (min-width: 641px) and (max-width: 1050px) {
+  .table-area { 
+    transform: scale(0.8); 
+    width: 125%; 
+    margin-left: -12.5%; 
+    margin-bottom: -100px; 
+  }
+}
+
+/* 700x700 specific tweaks (Small Window - Force Table View) */
+@media (min-width: 641px) and (max-width: 800px) {
+  .table-area { 
+    transform: scale(0.65); 
+    width: 154%; 
+    margin-left: -27%; 
+    margin-bottom: -150px; 
+  }
+}
+
+/* Short screens override (e.g. 700px height) */
+@media (min-width: 641px) and (max-height: 720px) {
+   .table-area { 
+     transform: scale(0.7); 
+     width: 142%; 
+     margin-left: -21%; 
+     margin-bottom: -120px; 
+   }
+}
+
+/* Very small window but still desktop mode (e.g. 700x700 strict) */
+@media (min-width: 641px) and (max-width: 800px) and (max-height: 800px) {
+   .table-area { 
+     transform: scale(0.6); 
+     width: 166%; 
+     margin-left: -33%; 
+     margin-bottom: -200px; 
+   }
+}
+
 /* Mobile & Responsive Overhaul - Grid Layout */
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   /* Turn Notify Mobile */
   .turn-notify {
     font-size: 24px;
@@ -579,29 +632,6 @@ body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% 25
   color: var(--text);
   box-shadow: 0 24px 40px rgba(0,0,0,.7);
   position: relative;
-}
-.modal-close {
-  position: absolute;
-  top: 15px;
-  left: 15px;
-  right: auto;
-  background: transparent;
-  border: none;
-  color: #888;
-  font-size: 32px;
-  cursor: pointer;
-  line-height: 0.8;
-  padding: 0;
-  z-index: 100;
-  width: auto;
-  height: auto;
-  transition: color 0.2s;
-}
-.modal-close:hover {
-  background: transparent;
-  color: #fff;
-  transform: none;
-  border: none;
 }
 .modal-title {
   font-weight: 900;

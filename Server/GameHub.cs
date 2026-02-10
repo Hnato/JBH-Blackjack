@@ -35,19 +35,6 @@ public class GameHub : Hub
                 State.RemoveSeat(seat);
             }
             if (State.HostId == Context.ConnectionId) State.HostId = null;
-
-            // Reset game if no players left
-            if (State.Players.Count == 0)
-            {
-                State.Dealer.Clear();
-                State.Phase = "BETTING";
-                State.Finished = false;
-                State.DealerActing = false;
-                State.GameLog.Clear();
-                State.ActiveSeat = null;
-                State.AdminId = null;
-                State.AdminToken = null;
-            }
         }
         await Clients.All.SendAsync("State", State.ToDto());
         await base.OnDisconnectedAsync(exception);
