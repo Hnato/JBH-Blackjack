@@ -1,29 +1,37 @@
-BlackJack BJH — uruchomienie i zasady
+🎰 BlackJack BJH - Launch and Rules
+🚀 Launch
 
-Uruchomienie:
-- W folderze Final uruchom plik `BlackJackBJH.exe`.
-- Aplikacja nasłuchuje na `http://0.0.0.0:5329`.
-- Pierwsze połączenie staje się hostem/adminem. Host widzi przyciski: `Start`, `Nowe zakłady`, `Reset`.
+ Open the Final folder and run BlackJackBJH.exe
+ The application listens on http://0.0.0.0:5329
+ The first connected player becomes the host/admin and can use: Start, New Bets, Reset
 
-Gra i wypłaty:
-- Faza `BETTING`: stawiasz żetony (limit stołu: 2000). Środki są zdejmowane z balansu natychmiast.
-- Faza `PLAY`: `Hit`, `Stand`, `Double` (podwaja stawkę, dobiera jedną kartę).
-- Blackjack (2 karty = 21): automatyczna wygrana i wypłata 3:2 (netto +1.5× stawki).
-- Rozliczenie (`SETTLEMENT`):
-  - Wygrana: wypłata `2× stawka` (wraca stawka + wygrana).
-  - Remis: wypłata `1× stawka`.
-  - Przegrana: `0`.
-  - Limity balansu: minimum `0`, maksimum `1 000 000`.
+🃏 Gameplay and Payouts
 
-Wynik rundy:
-- Okno wyniku pokazuje: wynik (Wygrana/Przegrana/Remis), zysk/strata, stawkę, procent względem stawki oraz nowy balans.
+ BETTING phase - place chips (table limit: 2000), chips are deducted immediately
+ PLAY phase - available actions: Hit, Stand, Double (doubles the bet and draws one card)
+ Blackjack (2 cards = 21) - automatic win with 3:2 payout (net profit = 1.5× bet)
 
-Zasady kolejki i rozłączenia:
-- Aktywne miejsce przechodzi automatycznie do następnego gracza.
-- Rozłączenie (odświeżenie strony) usuwa gracza ze stołu i nie blokuje kolejki.
+ SETTLEMENT phase:
 
-Mobilnie:
-- Interfejs jest skalowany dla ekranów ≤640px: mniejsze karty, żetony i przyciski są zawijane, aby były widoczne.
+  Win - payout 2× bet (bet returned + winnings)
+  Draw - payout 1× bet
+  Loss - payout 0
 
-Wymagania:
-- Windows 64-bit. Przy publikacji użyto trybu `win-x64`, plik EXE jest samodzielny.
+Balance limits - minimum 0, maximum 1,000,000
+
+📊 Round Result
+
+ The result window shows outcome (Win/Loss/Draw), profit/loss, bet amount, percentage change, and new balance
+
+🔄 Turn Order and Disconnection
+
+ Turn automatically moves to the next player
+ Disconnecting or refreshing removes the player from the table and does not block the game
+
+📱 Mobile Support
+
+ Interface optimized for screens ≤640px - smaller cards, responsive chips, wrapped buttons
+
+ ⚙ Requirements:
+ Windows 64-bit
+ Standalone win-x64 executable - no additional installation required
