@@ -30,6 +30,8 @@ Balance limits - minimum 0, maximum 1,000,000
 
 📱 Mobile Support
 
+
+
  Interface optimized for screens ≤640px - smaller cards, responsive chips, wrapped buttons
 
  ⚙ Requirements:
