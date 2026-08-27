@@ -29,9 +29,6 @@ Balance limits - minimum 0, maximum 1,000,000
  Disconnecting or refreshing removes the player from the table and does not block the game
 
 📱 Mobile Support
-
-
-
  Interface optimized for screens ≤640px - smaller cards, responsive chips, wrapped buttons
 
  ⚙ Requirements:
